@@ -221,7 +221,7 @@ export default function FindTutorPage() {
                          {/* --- FIX IS HERE: Direct Link to YouTube --- */}
                          <a href={lesson.video_url} target="_blank" rel="noopener noreferrer">
                             <button className="text-xs bg-slate-800 text-white px-3 py-1.5 rounded-lg hover:bg-red-600 transition flex items-center gap-1">
-                               <ExternalLink size={12} /> Watch on YouTube
+                               <ExternalLink size={12} /> Watch
                             </button>
                          </a>
                       </div>
