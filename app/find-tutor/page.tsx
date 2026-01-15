@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Search, Filter, Star, Clock, Zap, Calendar, ArrowLeft, X, Video, User } from 'lucide-react';
+import { Search, Filter, Star, Clock, Zap, Calendar, ArrowLeft, X, Video, User, RotateCcw, ExternalLink } from 'lucide-react';
 import Link from 'next/link';
 import { supabase } from '../lib/supabaseClient';
 import { useRouter } from 'next/navigation';
@@ -21,16 +21,18 @@ export default function FindTutorPage() {
   const router = useRouter();
 
   // 1. Fetch Tutors
+  const fetchTutors = async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from('tutors')
+      .select('*, profiles(full_name, avatar_url)');
+    
+    if (error) console.error(error);
+    else setTutors(data || []);
+    setLoading(false);
+  };
+
   useEffect(() => {
-    const fetchTutors = async () => {
-      const { data, error } = await supabase
-        .from('tutors')
-        .select('*, profiles(full_name, avatar_url)');
-      
-      if (error) console.error(error);
-      else setTutors(data || []);
-      setLoading(false);
-    };
     fetchTutors();
   }, []);
 
@@ -40,7 +42,7 @@ export default function FindTutorPage() {
     const { data } = await supabase
       .from('lessons')
       .select('*')
-      .eq('tutor_id', tutor.user_id); 
+      .eq('tutor_id', tutor.user_id);
     setTutorLessons(data || []);
   };
 
@@ -68,7 +70,7 @@ export default function FindTutorPage() {
           status: 'pending',
           booking_type: type,
           scheduled_time: type === 'live' ? new Date().toISOString() : new Date(scheduleDate).toISOString(),
-          guest_emails: guestEmails 
+          guest_emails: guestEmails
         }
       ]);
 
@@ -77,7 +79,7 @@ export default function FindTutorPage() {
     } else {
       alert("Request Sent! Check your Dashboard.");
       setBookingTutor(null);
-      setGuestEmails(""); // Reset emails
+      setGuestEmails(""); 
       router.push('/dashboard');
     }
   };
@@ -106,18 +108,27 @@ export default function FindTutorPage() {
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
-          <div className="w-24"></div> 
+          
+          <button 
+            onClick={() => window.location.reload()} 
+            className="flex items-center gap-2 bg-slate-800 px-4 py-2 rounded-full hover:bg-slate-700 text-slate-400 text-xs font-bold transition border border-slate-700"
+          >
+            <RotateCcw size={14} /> REFRESH LIST
+          </button>
         </div>
       </header>
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto p-6">
+        
         {loading ? (
           <div className="text-center text-slate-500 mt-20">Loading available tutors...</div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredTutors.map((tutor) => (
               <div key={tutor.id} className="bg-slate-800 rounded-2xl p-6 border border-slate-700 hover:border-blue-500/30 transition group relative">
+                
+                {/* Online Badge */}
                 {tutor.is_online && (
                   <div className="absolute top-4 right-4 bg-green-500/20 text-green-400 text-xs font-bold px-2 py-1 rounded-full flex items-center gap-1 border border-green-500/30 animate-pulse">
                     <span className="w-2 h-2 bg-green-400 rounded-full"></span> LIVE
@@ -155,10 +166,16 @@ export default function FindTutorPage() {
                    </div>
                    
                    <div className="grid grid-cols-2 gap-2">
-                     <button onClick={() => handleViewProfile(tutor)} className="bg-slate-700 hover:bg-slate-600 text-white font-bold py-2 rounded-xl transition text-sm flex items-center justify-center gap-2">
+                     <button 
+                       onClick={() => handleViewProfile(tutor)}
+                       className="bg-slate-700 hover:bg-slate-600 text-white font-bold py-2 rounded-xl transition text-sm flex items-center justify-center gap-2"
+                     >
                        <User size={16} /> Profile
                      </button>
-                     <button onClick={() => setBookingTutor(tutor)} className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded-xl transition text-sm flex items-center justify-center gap-2">
+                     <button 
+                       onClick={() => setBookingTutor(tutor)}
+                       className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded-xl transition text-sm flex items-center justify-center gap-2"
+                     >
                        <Clock size={16} /> Book
                      </button>
                    </div>
@@ -169,11 +186,12 @@ export default function FindTutorPage() {
         )}
       </main>
 
-      {/* --- PROFILE MODAL --- */}
+      {/* --- PROFILE & LESSONS MODAL --- */}
       {profileTutor && (
         <div className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4">
           <div className="bg-slate-800 w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl border border-slate-700 relative shadow-2xl">
             <button onClick={() => setProfileTutor(null)} className="absolute top-4 right-4 text-slate-400 hover:text-white p-2 bg-slate-900 rounded-full"><X size={24} /></button>
+            
             <div className="p-8">
               <div className="flex items-center gap-6 mb-8">
                  <div className="w-24 h-24 rounded-full bg-slate-700 flex items-center justify-center text-4xl font-bold border-4 border-slate-600">
@@ -185,21 +203,26 @@ export default function FindTutorPage() {
                     <p className="text-slate-400 mt-2">{profileTutor.bio}</p>
                  </div>
               </div>
+
               <h3 className="text-xl font-bold mb-4 flex items-center gap-2 border-t border-slate-700 pt-6">
                 <Video className="text-yellow-400" /> Recorded Lessons
               </h3>
+              
               <div className="space-y-3">
                  {tutorLessons.length === 0 ? (
                     <p className="text-slate-500 italic">No lessons yet.</p>
                  ) : (
                     tutorLessons.map((lesson) => (
-                      <div key={lesson.id} className="bg-slate-900 p-4 rounded-xl flex justify-between items-center">
+                      <div key={lesson.id} className="bg-slate-900 p-4 rounded-xl flex justify-between items-center group hover:bg-slate-950 transition">
                          <div className="flex items-center gap-3">
                             <Video className="text-slate-500" size={20} />
                             <div><h4 className="font-bold">{lesson.title}</h4></div>
                          </div>
+                         {/* --- FIX IS HERE: Direct Link to YouTube --- */}
                          <a href={lesson.video_url} target="_blank" rel="noopener noreferrer">
-                            <button className="text-xs bg-slate-800 text-white px-3 py-1.5 rounded-lg hover:bg-blue-600 transition">Watch</button>
+                            <button className="text-xs bg-slate-800 text-white px-3 py-1.5 rounded-lg hover:bg-red-600 transition flex items-center gap-1">
+                               <ExternalLink size={12} /> Watch on YouTube
+                            </button>
                          </a>
                       </div>
                     ))
@@ -220,7 +243,6 @@ export default function FindTutorPage() {
             <p className="text-slate-400 text-sm mb-6">Subject: {bookingTutor.subject}</p>
 
             <div className="space-y-4">
-              {/* GROUP SESSION INPUT */}
               <div className="bg-slate-900 border border-slate-700 p-4 rounded-xl">
                  <label className="block text-xs font-bold text-slate-400 mb-2 uppercase">Group Session? (Max 4)</label>
                  <input 
@@ -232,21 +254,26 @@ export default function FindTutorPage() {
                  />
               </div>
 
-              {/* Live Request */}
               <button 
                 onClick={() => handleBooking('live')}
                 disabled={!bookingTutor.is_online}
                 className={`w-full p-4 rounded-xl border flex items-center justify-between transition
-                  ${bookingTutor.is_online ? 'bg-green-500/10 border-green-500/50 hover:bg-green-500/20' : 'bg-slate-900 border-slate-700 opacity-50 cursor-not-allowed'}
+                  ${bookingTutor.is_online 
+                    ? 'bg-green-500/10 border-green-500/50 hover:bg-green-500/20 cursor-pointer' 
+                    : 'bg-slate-900 border-slate-700 opacity-50 cursor-not-allowed'}
                 `}
               >
                 <div className="flex items-center gap-3 text-left">
-                  <div className={`p-2 rounded-full ${bookingTutor.is_online ? 'bg-green-500 text-black' : 'bg-slate-800 text-slate-500'}`}><Zap size={20} fill="currentColor" /></div>
-                  <div><span className="block font-bold">Request Live Session</span><span className="text-xs text-slate-400">Tutor is online</span></div>
+                  <div className={`p-2 rounded-full ${bookingTutor.is_online ? 'bg-green-500 text-black' : 'bg-slate-800 text-slate-500'}`}>
+                    <Zap size={20} fill="currentColor" />
+                  </div>
+                  <div>
+                    <span className={`block font-bold ${bookingTutor.is_online ? 'text-white' : 'text-slate-500'}`}>Request Live Session</span>
+                    <span className="text-xs text-slate-400">{bookingTutor.is_online ? 'Tutor is online now!' : 'Tutor is currently offline'}</span>
+                  </div>
                 </div>
               </button>
 
-              {/* Schedule */}
               <div className="bg-slate-900 border border-slate-700 p-4 rounded-xl">
                  <div className="flex items-center gap-3 mb-3">
                     <div className="p-2 rounded-full bg-blue-600 text-white"><Calendar size={20} /></div>
