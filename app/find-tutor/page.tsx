@@ -1,42 +1,92 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Search, Filter, Star, Clock, ArrowLeft } from 'lucide-react';
+import { Search, Filter, Star, Clock, Zap, Calendar, ArrowLeft, X, Video, User } from 'lucide-react';
 import Link from 'next/link';
-import { supabase } from '../lib/supabaseClient'; // We import the connection we just made
+import { supabase } from '../lib/supabaseClient';
+import { useRouter } from 'next/navigation';
 
 export default function FindTutorPage() {
   const [searchTerm, setSearchTerm] = useState("");
-  const [tutors, setTutors] = useState<any[]>([]); // This holds the real data from DB
+  const [tutors, setTutors] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  // Modals
+  const [bookingTutor, setBookingTutor] = useState<any>(null);
+  const [profileTutor, setProfileTutor] = useState<any>(null);
+  const [tutorLessons, setTutorLessons] = useState<any[]>([]);
+  
+  const [scheduleDate, setScheduleDate] = useState("");
+  const router = useRouter();
 
-  // This runs automatically when the page loads (like a Constructor or Main method)
+  // 1. Fetch Tutors
   useEffect(() => {
     const fetchTutors = async () => {
-      // 1. Ask Supabase for everything in the 'tutors' table
       const { data, error } = await supabase
         .from('tutors')
-        .select('*');
+        .select('*, profiles(full_name, avatar_url)');
       
-      if (error) {
-        console.error("Error fetching tutors:", error);
-      } else {
-        // 2. Save the data to our state variable
-        setTutors(data || []);
-      }
+      if (error) console.error(error);
+      else setTutors(data || []);
       setLoading(false);
     };
-
     fetchTutors();
   }, []);
 
-  // Filter logic
+  // 2. Fetch Lessons for Profile View
+  const handleViewProfile = async (tutor: any) => {
+    setProfileTutor(tutor);
+    // Fetch this tutor's lessons
+    const { data } = await supabase
+      .from('lessons')
+      .select('*')
+      .eq('tutor_id', tutor.user_id); // Note: lessons link to user_id (profile), bookings link to tutor_id
+    setTutorLessons(data || []);
+  };
+
+  // 3. Booking Logic
+  const handleBooking = async (type: 'live' | 'scheduled') => {
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+      alert("Please login to book a tutor!");
+      router.push('/auth');
+      return;
+    }
+
+    if (type === 'scheduled' && !scheduleDate) {
+      alert("Please select a date and time!");
+      return;
+    }
+
+    const { error } = await supabase
+      .from('bookings')
+      .insert([
+        { 
+          student_id: user.id, 
+          tutor_id: bookingTutor.id,
+          status: 'pending',
+          booking_type: type,
+          scheduled_time: type === 'live' ? new Date().toISOString() : new Date(scheduleDate).toISOString()
+        }
+      ]);
+
+    if (error) {
+      alert("Booking failed: " + error.message);
+    } else {
+      alert("Request Sent! Check your Dashboard.");
+      setBookingTutor(null);
+      router.push('/dashboard');
+    }
+  };
+
   const filteredTutors = tutors.filter(tutor => 
-    tutor.subject.toLowerCase().includes(searchTerm.toLowerCase())
+    tutor.subject.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    tutor.profiles?.full_name?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
-    <div className="min-h-screen bg-slate-900 text-white font-sans">
+    <div className="min-h-screen bg-slate-900 text-white font-sans relative">
       
       {/* Header */}
       <header className="sticky top-0 z-10 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 p-4">
@@ -49,46 +99,45 @@ export default function FindTutorPage() {
             <Search className="absolute left-4 top-3.5 text-slate-400" size={20} />
             <input 
               type="text" 
-              placeholder="Search subjects (e.g. Calculus, Java)..." 
+              placeholder="Search by Subject or Tutor Name..." 
               className="w-full bg-slate-800 border border-slate-700 rounded-full py-3 pl-12 pr-4 text-white focus:outline-none focus:border-yellow-400 transition"
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
-          
-          <button className="flex items-center gap-2 text-sm font-bold text-slate-300 hover:text-white">
-            <Filter size={18} /> Filters
-          </button>
+          <div className="w-24"></div> 
         </div>
       </header>
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto p-6">
-        <h2 className="text-2xl font-bold mb-6">Available Tutors <span className="text-slate-500 text-lg font-normal">({filteredTutors.length})</span></h2>
         
         {loading ? (
-          <div className="text-center text-slate-500 mt-20">Loading tutors from database...</div>
+          <div className="text-center text-slate-500 mt-20">Loading available tutors...</div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredTutors.map((tutor) => (
-              <div key={tutor.id} className="bg-slate-800 rounded-2xl p-6 border border-slate-700 hover:border-yellow-400/50 transition hover:-translate-y-1 group">
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-center gap-4">
-                    {/* Generates a random avatar based on the tutor ID */}
-                    <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${tutor.id}`} alt="Avatar" className="w-16 h-16 rounded-full bg-slate-700" />
-                    <div>
-                      <h3 className="text-xl font-bold">{tutor.subject}</h3> 
-                      {/* Note: We are showing Subject as name for now because 'tutors' table links to 'profiles', but let's keep it simple */}
-                      <div className="flex items-center gap-1 text-yellow-400 text-sm font-bold">
-                        <Star size={14} fill="currentColor" /> {tutor.rating}
-                      </div>
+              <div key={tutor.id} className="bg-slate-800 rounded-2xl p-6 border border-slate-700 hover:border-blue-500/30 transition group relative">
+                
+                {/* Online Badge */}
+                {tutor.is_online && (
+                  <div className="absolute top-4 right-4 bg-green-500/20 text-green-400 text-xs font-bold px-2 py-1 rounded-full flex items-center gap-1 border border-green-500/30 animate-pulse">
+                    <span className="w-2 h-2 bg-green-400 rounded-full"></span> LIVE
+                  </div>
+                )}
+
+                <div className="flex items-start gap-4 mb-4">
+                  <div className="w-16 h-16 rounded-full bg-slate-700 flex items-center justify-center text-2xl font-bold border-2 border-slate-600">
+                    {tutor.profiles?.full_name?.[0] || "T"}
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold">{tutor.profiles?.full_name || "Tutor"}</h3> 
+                    <p className="text-slate-400 text-sm">{tutor.subject}</p>
+                    <div className="flex items-center gap-1 text-yellow-400 text-sm font-bold mt-1">
+                      <Star size={14} fill="currentColor" /> {tutor.rating}
                     </div>
                   </div>
-                  <div className="text-right">
-                    <span className="block text-2xl font-bold text-white">R{tutor.price_per_hour}</span>
-                    <span className="text-slate-400 text-xs">per hour</span>
-                  </div>
                 </div>
-                
+
                 <div className="mb-6">
                   <p className="text-slate-300 font-medium mb-2 text-sm line-clamp-2">{tutor.bio}</p>
                   <div className="flex gap-2 flex-wrap">
@@ -100,21 +149,156 @@ export default function FindTutorPage() {
                   </div>
                 </div>
 
-                <button className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition group-hover:shadow-lg group-hover:shadow-blue-600/20">
-                  <Clock size={18} />
-                  Book Session
-                </button>
+                {/* ACTION BUTTONS */}
+                <div className="flex flex-col gap-2 border-t border-slate-700 pt-4">
+                   <div className="flex justify-between items-center mb-2">
+                      <span className="block text-2xl font-bold text-white">R{tutor.price_per_hour}</span>
+                      <span className="text-slate-500 text-xs">per hour</span>
+                   </div>
+                   
+                   <div className="grid grid-cols-2 gap-2">
+                     <button 
+                       onClick={() => handleViewProfile(tutor)}
+                       className="bg-slate-700 hover:bg-slate-600 text-white font-bold py-2 rounded-xl transition text-sm flex items-center justify-center gap-2"
+                     >
+                       <User size={16} /> Profile
+                     </button>
+                     <button 
+                       onClick={() => setBookingTutor(tutor)}
+                       className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded-xl transition text-sm flex items-center justify-center gap-2"
+                     >
+                       <Clock size={16} /> Book
+                     </button>
+                   </div>
+                </div>
               </div>
             ))}
           </div>
         )}
-
-        {!loading && filteredTutors.length === 0 && (
-          <div className="text-center py-20 text-slate-500">
-            <p>No tutors found. Try searching for something else.</p>
-          </div>
-        )}
       </main>
+
+      {/* --- PROFILE & LESSONS MODAL --- */}
+      {profileTutor && (
+        <div className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-800 w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl border border-slate-700 relative shadow-2xl">
+            <button onClick={() => setProfileTutor(null)} className="absolute top-4 right-4 text-slate-400 hover:text-white p-2 bg-slate-900 rounded-full"><X size={24} /></button>
+            
+            <div className="p-8">
+              {/* Profile Header */}
+              <div className="flex items-center gap-6 mb-8">
+                 <div className="w-24 h-24 rounded-full bg-slate-700 flex items-center justify-center text-4xl font-bold border-4 border-slate-600">
+                    {profileTutor.profiles?.full_name?.[0]}
+                 </div>
+                 <div>
+                    <h2 className="text-3xl font-bold">{profileTutor.profiles?.full_name}</h2>
+                    <p className="text-blue-400 font-bold text-lg">{profileTutor.subject}</p>
+                    <p className="text-slate-400 mt-2">{profileTutor.bio}</p>
+                 </div>
+              </div>
+
+              {/* Lessons List */}
+              <h3 className="text-xl font-bold mb-4 flex items-center gap-2 border-t border-slate-700 pt-6">
+                <Video className="text-yellow-400" /> Recorded Lessons
+              </h3>
+              
+              <div className="space-y-3">
+                 {tutorLessons.length === 0 ? (
+                    <p className="text-slate-500 italic">This tutor hasn't uploaded any lessons yet.</p>
+                 ) : (
+                    tutorLessons.map((lesson) => (
+                      <div key={lesson.id} className="bg-slate-900 p-4 rounded-xl flex justify-between items-center group hover:bg-slate-950 transition">
+                         <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 bg-slate-800 rounded flex items-center justify-center text-slate-500">
+                               <Video size={20} />
+                            </div>
+                            <div>
+                               <h4 className="font-bold">{lesson.title}</h4>
+                               <p className="text-xs text-slate-500">Free Preview</p>
+                            </div>
+                         </div>
+                       <a href={lesson.video_url} target="_blank" rel="noopener noreferrer">
+   <button className="text-xs bg-slate-800 text-white px-3 py-1.5 rounded-lg hover:bg-blue-600 transition flex items-center gap-2">
+      <Video size={14} /> Watch
+   </button>
+</a>
+                      </div>
+                    ))
+                 )}
+              </div>
+
+              {/* Action Footer */}
+              <div className="mt-8 pt-6 border-t border-slate-700 flex justify-end">
+                  <button 
+                     onClick={() => {
+                        setBookingTutor(profileTutor);
+                        setProfileTutor(null);
+                     }}
+                     className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-8 rounded-xl flex items-center gap-2"
+                  >
+                     <Clock size={20} /> Book a Session with {profileTutor.profiles?.full_name?.split(' ')[0]}
+                  </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- BOOKING MODAL --- */}
+      {bookingTutor && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-800 w-full max-w-md rounded-3xl p-6 border border-slate-700 relative shadow-2xl">
+            <button onClick={() => setBookingTutor(null)} className="absolute top-4 right-4 text-slate-400 hover:text-white"><X size={24} /></button>
+
+            <h2 className="text-2xl font-bold mb-1">Book {bookingTutor.profiles.full_name}</h2>
+            <p className="text-slate-400 text-sm mb-6">Subject: {bookingTutor.subject}</p>
+
+            <div className="space-y-4">
+              {/* Live Request */}
+              <button 
+                onClick={() => handleBooking('live')}
+                disabled={!bookingTutor.is_online}
+                className={`w-full p-4 rounded-xl border flex items-center justify-between group transition
+                  ${bookingTutor.is_online 
+                    ? 'bg-green-500/10 border-green-500/50 hover:bg-green-500/20 cursor-pointer' 
+                    : 'bg-slate-900 border-slate-700 opacity-50 cursor-not-allowed'}
+                `}
+              >
+                <div className="flex items-center gap-3">
+                  <div className={`p-2 rounded-full ${bookingTutor.is_online ? 'bg-green-500 text-black' : 'bg-slate-800 text-slate-500'}`}>
+                    <Zap size={20} fill="currentColor" />
+                  </div>
+                  <div className="text-left">
+                    <span className={`block font-bold ${bookingTutor.is_online ? 'text-white' : 'text-slate-500'}`}>Request Live Session</span>
+                    <span className="text-xs text-slate-400">{bookingTutor.is_online ? 'Tutor is online now!' : 'Tutor is currently offline'}</span>
+                  </div>
+                </div>
+              </button>
+
+              {/* Schedule */}
+              <div className="bg-slate-900 border border-slate-700 p-4 rounded-xl">
+                 <div className="flex items-center gap-3 mb-3">
+                    <div className="p-2 rounded-full bg-blue-600 text-white"><Calendar size={20} /></div>
+                    <div className="text-left">
+                      <span className="block font-bold text-white">Schedule for Later</span>
+                      <span className="text-xs text-slate-400">Pick a date & time</span>
+                    </div>
+                 </div>
+                 <input 
+                   type="datetime-local"
+                   className="w-full bg-slate-800 border border-slate-600 rounded-lg p-2 text-white text-sm focus:border-blue-500 outline-none"
+                   onChange={(e) => setScheduleDate(e.target.value)}
+                 />
+                 <button 
+                   onClick={() => handleBooking('scheduled')}
+                   className="w-full mt-3 bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded-lg text-sm transition"
+                 >
+                   Confirm Schedule
+                 </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

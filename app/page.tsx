@@ -1,8 +1,22 @@
-import React from 'react';
+'use client';
+
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ArrowRight, BookOpen, Video, Users, Star, CheckCircle } from 'lucide-react';
+import { supabase } from './lib/supabaseClient';
 
 export default function Home() {
+  const [user, setUser] = useState<any>(null);
+
+  // Check if user is logged in when the page loads
+  useEffect(() => {
+    const checkUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      setUser(user);
+    };
+    checkUser();
+  }, []);
+
   return (
     <div className="min-h-screen bg-slate-900 text-white font-sans selection:bg-yellow-400 selection:text-black">
       {/* Navigation */}
@@ -11,11 +25,24 @@ export default function Home() {
           TUTOR<span className="text-white">HUB</span>
         </h1>
         <div className="hidden md:flex items-center gap-8 font-bold text-sm">
-          <a href="#" className="hover:text-yellow-400 transition">FIND A TUTOR</a>
-          <a href="#" className="hover:text-yellow-400 transition">BECOME A TUTOR</a>
-          <button className="bg-yellow-400 text-black px-6 py-2 rounded-full hover:bg-yellow-300 transition shadow-[0_0_20px_rgba(250,204,21,0.5)]">
-            LOGIN
-          </button>
+          <Link href="/find-tutor" className="hover:text-yellow-400 transition">FIND A TUTOR</Link>
+          <Link href="/auth" className="hover:text-yellow-400 transition">BECOME A TUTOR</Link>
+          
+          {/* DYNAMIC AUTH BUTTON */}
+          {user ? (
+            <Link href="/dashboard">
+              <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold cursor-pointer border-2 border-yellow-400 hover:scale-105 transition" title="Go to Dashboard">
+                 {/* Shows first letter of email or 'U' */}
+                 {user.email?.charAt(0).toUpperCase() || 'U'}
+              </div>
+            </Link>
+          ) : (
+            <Link href="/auth">
+              <button className="bg-yellow-400 text-black px-6 py-2 rounded-full hover:bg-yellow-300 transition shadow-[0_0_20px_rgba(250,204,21,0.5)]">
+                LOGIN
+              </button>
+            </Link>
+          )}
         </div>
       </nav>
 
@@ -43,7 +70,7 @@ export default function Home() {
         </p>
         
         <div className="flex flex-col md:flex-row gap-4 justify-center items-center mb-24">
-          {/* This button is now wrapped in a Link */}
+          {/* First Button Link */}
           <Link href="/find-tutor">
             <button className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-8 py-4 rounded-xl text-lg font-bold transition transform hover:scale-105 shadow-lg shadow-blue-600/25">
               <Users size={20} />
@@ -51,8 +78,8 @@ export default function Home() {
             </button>
           </Link>
 
-        {/* Second Button Link */}
-          <Link href="/videos">
+          {/* Second Button Link */}
+          <Link href="/find-tutor">
             <button className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-white px-8 py-4 rounded-xl text-lg font-bold transition border border-slate-700 hover:border-slate-600">
               <Video size={20} />
               Browse Recorded Lessons
