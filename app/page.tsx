@@ -32,7 +32,6 @@ export default function Home() {
           {user ? (
             <Link href="/dashboard">
               <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold cursor-pointer border-2 border-yellow-400 hover:scale-105 transition" title="Go to Dashboard">
-                 {/* Shows first letter of email or 'U' */}
                  {user.email?.charAt(0).toUpperCase() || 'U'}
               </div>
             </Link>
@@ -70,7 +69,6 @@ export default function Home() {
         </p>
         
         <div className="flex flex-col md:flex-row gap-4 justify-center items-center mb-24">
-          {/* First Button Link */}
           <Link href="/find-tutor">
             <button className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-8 py-4 rounded-xl text-lg font-bold transition transform hover:scale-105 shadow-lg shadow-blue-600/25">
               <Users size={20} />
@@ -78,7 +76,6 @@ export default function Home() {
             </button>
           </Link>
 
-          {/* Second Button Link */}
           <Link href="/find-tutor">
             <button className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-white px-8 py-4 rounded-xl text-lg font-bold transition border border-slate-700 hover:border-slate-600">
               <Video size={20} />
@@ -109,6 +106,17 @@ export default function Home() {
           />
         </div>
       </main>
+
+      {/* COPYRIGHT FOOTER */}
+      <footer className="border-t border-slate-800 mt-20 py-8 text-center bg-slate-950">
+        <p className="text-slate-500 text-sm">
+          © {new Date().getFullYear()} TutorHub. All Rights Reserved.
+        </p>
+        <p className="text-slate-400 font-bold mt-2">
+          Created by <span className="text-yellow-400">Chulumanco Basil Zono</span> and <span className="text-blue-400">Luvo Jindela</span>
+        </p>
+      </footer>
+
     </div>
   );
 }

@@ -201,7 +201,16 @@ export default function Dashboard() {
                            : `Tutor: ${booking.tutors?.profiles?.full_name || 'Tutor'}`
                          }
                        </h3>
-                       <p className="text-slate-400 text-sm flex items-center gap-2">
+
+                       {/* SHOW GUESTS IF THEY EXIST (TUTOR ONLY) */}
+                       {profile?.is_tutor && booking.guest_emails && (
+                         <div className="mt-1 bg-blue-500/10 border border-blue-500/30 p-2 rounded-lg">
+                           <p className="text-xs text-blue-300 font-bold mb-1">📢 Group Session (+ Guests):</p>
+                           <p className="text-xs text-slate-300 break-all">{booking.guest_emails}</p>
+                         </div>
+                       )}
+
+                       <p className="text-slate-400 text-sm flex items-center gap-2 mt-1">
                          {booking.booking_type === 'live' ? (
                            <span className="text-green-400 font-bold">⚡ Live Request</span>
                          ) : (
