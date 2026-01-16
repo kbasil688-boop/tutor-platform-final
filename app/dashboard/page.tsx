@@ -12,10 +12,9 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
-  // --- FIX 1: ROBUST LINK CLEANER ---
   const ensureProtocol = (url: string) => {
     if (!url) return '#';
-    let cleanUrl = url.trim(); // Remove spaces
+    let cleanUrl = url.trim();
     if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
       return `https://${cleanUrl}`;
     }
@@ -23,47 +22,38 @@ export default function Dashboard() {
   };
 
   const refreshData = async () => {
-    // 1. Get User
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
       router.push('/auth');
       return;
     }
 
-    // 2. Get Profile
     const { data: profileData } = await supabase.from('profiles').select('*').eq('id', user.id).single();
     setProfile(profileData);
 
     let fetchedBookings = [];
 
-    // 3. FETCH DATA
+    // --- FETCH DATA ---
     if (profileData?.is_tutor) {
-      // --- I AM A TUTOR ---
       const { data: tData } = await supabase.from('tutors').select('*').eq('user_id', user.id).single();
       setTutorData(tData);
 
       if (tData) {
         const { data: bData } = await supabase.from('bookings').select('*').eq('tutor_id', tData.id);
-        
         if (bData && bData.length > 0) {
            const studentIds = bData.map(b => b.student_id);
            const { data: students } = await supabase.from('profiles').select('id, full_name, email').in('id', studentIds);
-           
            fetchedBookings = bData.map(booking => ({
              ...booking,
              profiles: students?.find(s => s.id === booking.student_id)
            }));
         }
       }
-
     } else {
-      // --- I AM A STUDENT ---
       const { data: bData } = await supabase.from('bookings').select('*').eq('student_id', user.id);
-      
       if (bData && bData.length > 0) {
         const tutorIds = bData.map(b => b.tutor_id);
         const { data: tutors } = await supabase.from('tutors').select('*').in('id', tutorIds);
-        
         const tutorUserIds = tutors?.map(t => t.user_id) || [];
         const { data: tutorProfiles } = await supabase.from('profiles').select('id, full_name').in('id', tutorUserIds);
 
@@ -78,13 +68,25 @@ export default function Dashboard() {
       }
     }
     
-    // Sort & Clean
+    // --- CRITICAL FIX: SMART FILTERING ---
     const now = new Date();
     const cleanBookings = fetchedBookings.filter((b: any) => {
+      // 1. Hide Rejected immediately
       if (b.status === 'rejected') return false; 
+      
+      // 2. Handle Pending Logic
       if (b.status === 'pending') {
-         const bookingTime = new Date(b.scheduled_time || b.created_at);
-         if (bookingTime < now) return false; 
+         const createdTime = new Date(b.created_at); // Use creation time for Live logic
+         const scheduledTime = new Date(b.scheduled_time);
+
+         if (b.booking_type === 'live') {
+            // LIVE RULE: Keep visible for 10 minutes after creation
+            const tenMinutesLater = new Date(createdTime.getTime() + 10 * 60000);
+            if (now > tenMinutesLater) return false; // Hide if older than 10 mins
+         } else {
+            // SCHEDULED RULE: Hide if the specific meeting time has passed
+            if (now > scheduledTime) return false; 
+         }
       }
       return true;
     });
@@ -98,22 +100,19 @@ export default function Dashboard() {
     refreshData();
   }, [router]);
 
-  // --- ACTIONS ---
   const toggleOnline = async () => {
     if (!tutorData) return;
     const newStatus = !tutorData.is_online;
     setTutorData({ ...tutorData, is_online: newStatus }); 
-    const { error } = await supabase.from('tutors').update({ is_online: newStatus }).eq('id', tutorData.id);
-    if (error) alert("Status update failed: " + error.message);
+    await supabase.from('tutors').update({ is_online: newStatus }).eq('id', tutorData.id);
   };
 
-  // --- FIX 2: TRIM LINK ON INPUT ---
   const handleBookingAction = async (bookingId: number, action: 'confirmed' | 'rejected') => {
     let link = null;
     if (action === 'confirmed') {
       const rawLink = prompt("Please enter Zoom/Google Meet link:");
-      if (!rawLink) return; // Cancel if empty
-      link = rawLink.trim(); // Remove spaces immediately
+      if (!rawLink) return;
+      link = rawLink.trim();
     }
     await supabase.from('bookings').update({ status: action, meeting_link: link }).eq('id', bookingId);
     refreshData();
@@ -133,14 +132,15 @@ export default function Dashboard() {
   };
 
   const uploadLesson = async (title: string, url: string) => {
-    const { error } = await supabase.from('lessons').insert([
-        { tutor_id: tutorData.user_id, title: title, video_url: url }
-    ]);
+    const { error } = await supabase.from('lessons').insert([{ tutor_id: tutorData.user_id, title: title, video_url: url }]);
     if (error) alert("Error: " + error.message);
     else alert("Lesson Uploaded!");
   }
 
   const handleLogout = async () => {
+    if (profile?.is_tutor && tutorData) {
+      await supabase.from('tutors').update({ is_online: false }).eq('id', tutorData.id);
+    }
     await supabase.auth.signOut();
     router.push('/');
   };
@@ -157,8 +157,6 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen bg-slate-900 text-white font-sans p-6">
       <div className="max-w-4xl mx-auto">
-        
-        {/* Header */}
         <div className="flex flex-col md:flex-row justify-between items-center mb-8 border-b border-slate-700 pb-6 gap-4">
           <div className="flex items-center gap-4">
              <div className="bg-blue-600 w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold border-2 border-yellow-400">
@@ -171,17 +169,9 @@ export default function Dashboard() {
                </span>
              </div>
           </div>
-          
           <div className="flex items-center gap-4">
              {profile?.is_tutor && (
-               <button 
-                 onClick={toggleOnline}
-                 className={`px-6 py-3 rounded-full font-bold flex items-center gap-2 transition shadow-lg
-                   ${tutorData?.is_online 
-                     ? 'bg-green-500 text-black hover:bg-green-400 shadow-green-500/20' 
-                     : 'bg-slate-700 text-slate-400 hover:bg-slate-600'}
-                 `}
-               >
+               <button onClick={toggleOnline} className={`px-6 py-3 rounded-full font-bold flex items-center gap-2 transition shadow-lg ${tutorData?.is_online ? 'bg-green-500 text-black hover:bg-green-400 shadow-green-500/20' : 'bg-slate-700 text-slate-400 hover:bg-slate-600'}`}>
                  <Zap fill={tutorData?.is_online ? "black" : "currentColor"} size={20} />
                  {tutorData?.is_online ? 'ONLINE' : 'OFFLINE'}
                </button>
@@ -192,12 +182,16 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* --- QUICK ACTIONS --- */}
         <div className="mb-10">
             {profile?.is_tutor ? (
-                <button onClick={handleUploadClick} className="w-full md:w-auto bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 px-8 rounded-xl flex items-center justify-center gap-2 transition">
-                  <PlusCircle size={20} /> Upload New Lesson
-                </button>
+                <div className="flex gap-4">
+                  <button onClick={handleUploadClick} className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 px-8 rounded-xl flex items-center justify-center gap-2 transition">
+                    <PlusCircle size={20} /> Upload Lesson
+                  </button>
+                  <button onClick={() => router.push('/dashboard/edit-profile')} className="bg-slate-700 hover:bg-slate-600 text-white font-bold py-4 px-8 rounded-xl flex items-center justify-center gap-2 transition">
+                    <User size={20} /> Edit Profile
+                  </button>
+                </div>
             ) : (
                 <button onClick={() => router.push('/find-tutor')} className="w-full bg-yellow-400 hover:bg-yellow-300 text-black font-bold py-4 px-8 rounded-xl flex items-center justify-center gap-2 transition shadow-[0_0_20px_rgba(250,204,21,0.3)] hover:scale-[1.02]">
                   <Search size={24} /> FIND A TUTOR NOW
@@ -205,11 +199,9 @@ export default function Dashboard() {
             )}
         </div>
 
-        {/* --- BOOKINGS LIST --- */}
         <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700">
           <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-            <Bell className="text-yellow-400" /> 
-            {profile?.is_tutor ? 'Manage Requests' : 'My Sessions'}
+            <Bell className="text-yellow-400" /> {profile?.is_tutor ? 'Manage Requests' : 'My Sessions'}
           </h2>
 
           <div className="space-y-4">
@@ -218,7 +210,6 @@ export default function Dashboard() {
             ) : (
               bookings.map((booking) => (
                 <div key={booking.id} className="bg-slate-900 p-5 rounded-xl border border-slate-700 flex flex-col md:flex-row justify-between items-center gap-4 shadow-sm">
-                   
                    <div className="flex items-center gap-4 w-full">
                      <div className={`p-3 rounded-full shrink-0 ${booking.booking_type === 'live' ? 'bg-green-500/20 text-green-400' : 'bg-blue-500/20 text-blue-400'}`}>
                         {booking.booking_type === 'live' ? <Zap size={24} /> : <Clock size={24} />}
@@ -230,30 +221,21 @@ export default function Dashboard() {
                            : `Tutor: ${booking.tutors?.profiles?.full_name || 'Unknown Tutor'}`
                          }
                        </h3>
-                       
                        {profile?.is_tutor && booking.guest_emails && (
                          <div className="mt-1 bg-blue-500/10 border border-blue-500/30 p-2 rounded-lg">
                            <p className="text-xs text-blue-300 font-bold mb-1">📢 Group Session (+ Guests):</p>
                            <p className="text-xs text-slate-300 break-all">{booking.guest_emails}</p>
                          </div>
                        )}
-
                        <div className="text-slate-400 text-sm flex flex-col gap-1 mt-1">
                           {booking.booking_type === 'live' ? (
-                            <span className="text-green-400 font-bold">⚡ Live Request</span>
+                            <span className="text-green-400 font-bold">⚡ Live Request </span>
                           ) : (
-                            <span>📅 {new Date(booking.scheduled_time || booking.created_at).toLocaleString()}</span>
+                            <span>📅 {new Date(booking.scheduled_time).toLocaleString()}</span>
                           )}
-                          
-                          {/* JOIN CALL BUTTON (With Fix) */}
                           {booking.meeting_link && (
                             <div className="flex flex-col gap-1 mt-1">
-                                <a 
-                                  href={ensureProtocol(booking.meeting_link)} 
-                                  target="_blank" 
-                                  rel="noopener noreferrer" 
-                                  className="bg-green-600 hover:bg-green-500 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 w-fit animate-pulse"
-                                >
+                                <a href={ensureProtocol(booking.meeting_link)} target="_blank" rel="noopener noreferrer" className="bg-green-600 hover:bg-green-500 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 w-fit animate-pulse">
                                    <Video size={16} /> JOIN CALL
                                 </a>
                             </div>
@@ -266,16 +248,12 @@ export default function Dashboard() {
                      <span className={`px-4 py-1.5 rounded-full text-xs font-bold uppercase border ${getStatusColor(booking.status)}`}>
                        {booking.status}
                      </span>
-
-                     {/* TUTOR ACTIONS */}
                      {profile?.is_tutor && booking.status === 'pending' && (
                         <div className="flex gap-2">
                           <button onClick={() => handleBookingAction(booking.id, 'confirmed')} className="bg-green-600 hover:bg-green-500 text-white p-2 rounded-lg" title="Accept"><Check size={20} /></button>
                           <button onClick={() => handleBookingAction(booking.id, 'rejected')} className="bg-red-600 hover:bg-red-500 text-white p-2 rounded-lg" title="Reject"><XIcon size={20} /></button>
                         </div>
                      )}
-
-                     {/* STUDENT ACTIONS */}
                      {!profile?.is_tutor && (
                         <button onClick={() => handleCancelBooking(booking.id)} className="bg-slate-700 hover:bg-red-600 text-slate-300 hover:text-white p-2 rounded-lg transition" title="Cancel Booking">
                            <Trash2 size={20} />
@@ -287,7 +265,6 @@ export default function Dashboard() {
             )}
           </div>
         </div>
-
       </div>
     </div>
   );
