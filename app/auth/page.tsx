@@ -53,9 +53,14 @@ export default function AuthPage() {
       return;
     }
     setLoading(true);
+    
+    // FIX: Use window.location.origin to automatically get the correct domain (Localhost or Vercel)
+    const redirectUrl = `${window.location.origin}/auth/reset-password`;
+
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: 'http://localhost:3000/auth/reset-password',
+      redirectTo: redirectUrl,
     });
+    
     setLoading(false);
     if (error) setMessage({ text: error.message, type: 'error' });
     else setMessage({ text: "Check your email for the reset link!", type: 'success' });
