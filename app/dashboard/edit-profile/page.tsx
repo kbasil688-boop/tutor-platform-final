@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { useRouter } from 'next/navigation';
-import { Save, ArrowLeft, Loader2 } from 'lucide-react';
+import { Save, ArrowLeft, Loader2, Languages } from 'lucide-react';
 
 export default function EditProfilePage() {
   const router = useRouter();
@@ -15,6 +15,7 @@ export default function EditProfilePage() {
   const [subject, setSubject] = useState('');
   const [price, setPrice] = useState('');
   const [bio, setBio] = useState('');
+  const [languageStr, setLanguageStr] = useState(''); // NEW: Languages
   const [questions, setQuestions] = useState<any[]>([]);
 
   // 1. Fetch Current Data
@@ -36,8 +37,8 @@ export default function EditProfilePage() {
         setTutorId(tutor.id);
         setSubject(tutor.subject);
         setPrice(tutor.price_per_hour);
-        setBio(tutor.bio);
-        // Load the custom questions (or empty array if none)
+        setBio(tutor.bio || '');
+        setLanguageStr(tutor.languages || ''); // Load existing languages
         setQuestions(Array.isArray(tutor.custom_questions) ? tutor.custom_questions : []);
       }
       setLoading(false);
@@ -63,7 +64,8 @@ export default function EditProfilePage() {
         subject: subject,
         price_per_hour: parseInt(price),
         bio: bio,
-        custom_questions: questions // Update the JSON
+        languages: languageStr, // Save Languages
+        custom_questions: questions
       })
       .eq('id', tutorId);
 
@@ -91,7 +93,6 @@ export default function EditProfilePage() {
 
         <form onSubmit={handleSave} className="space-y-6">
           
-          {/* Basic Info */}
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-bold text-slate-400 mb-2 uppercase">Subject</label>
@@ -113,6 +114,20 @@ export default function EditProfilePage() {
             </div>
           </div>
 
+          {/* NEW: LANGUAGE INPUT */}
+          <div>
+            <label className="block text-slate-400 text-xs uppercase font-bold mb-2 flex items-center gap-1">
+                <Languages size={14}/> Languages (Comma separated)
+            </label>
+            <input 
+                type="text" 
+                className="w-full bg-slate-800 border border-slate-600 rounded-lg p-3 text-white focus:border-yellow-400 outline-none"
+                placeholder="English, Zulu, Xhosa"
+                value={languageStr}
+                onChange={(e) => setLanguageStr(e.target.value)}
+            />
+          </div>
+
           <div>
             <label className="block text-xs font-bold text-slate-400 mb-2 uppercase">Short Bio</label>
             <textarea 
@@ -122,7 +137,6 @@ export default function EditProfilePage() {
             />
           </div>
 
-          {/* Q&A Editor */}
           {questions.length > 0 && (
             <div className="bg-slate-800 p-6 rounded-xl border border-slate-700">
               <h3 className="text-yellow-400 font-bold mb-4">Edit Your Profile Answers</h3>

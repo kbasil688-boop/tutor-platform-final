@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Search, Star, Clock, Zap, Calendar, ArrowLeft, X, Video, User, RotateCcw, ExternalLink, MessageSquare } from 'lucide-react';
+import { Search, Star, Clock, Zap, Calendar, ArrowLeft, X, Video, User, RotateCcw, ExternalLink, MessageSquare, Languages } from 'lucide-react';
 import Link from 'next/link';
 import { supabase } from '../lib/supabaseClient';
 import { useRouter } from 'next/navigation';
@@ -164,6 +164,23 @@ export default function FindTutorPage() {
                     </div>
                  </div>
               </div>
+
+              {/* --- LANGUAGES BADGE (UPDATED) --- */}
+              {profileTutor.languages && (
+                 <div className="mb-8">
+                    <h3 className="text-slate-400 text-xs font-bold uppercase mb-3 flex items-center gap-2">
+                       <Languages size={14}/> I can speak/teach in these languages:
+                    </h3>
+                    <div className="flex flex-wrap gap-2">
+                        {profileTutor.languages.split(',').map((lang: string, i: number) => (
+                           <span key={i} className="bg-blue-600/20 text-blue-300 px-3 py-1.5 rounded-lg text-sm font-medium border border-blue-500/30">
+                              {lang.trim()}
+                           </span>
+                        ))}
+                    </div>
+                 </div>
+              )}
+
               <div className="mb-8 space-y-4">
                  <h3 className="text-slate-400 text-xs font-bold uppercase mb-2 flex items-center gap-2">
                     <MessageSquare size={14}/> About {profileTutor.profiles?.full_name?.split(' ')[0]}
@@ -210,7 +227,7 @@ export default function FindTutorPage() {
 
       {bookingTutor && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-800 w-full max-w-md rounded-3xl p-6 border border-slate-700 relative shadow-2xl">
+          <div className="bg-slate-800 w-[95%] md:w-full max-w-md rounded-3xl p-6 border border-slate-700 relative shadow-2xl">
             <button onClick={() => setBookingTutor(null)} className="absolute top-4 right-4 text-slate-400 hover:text-white"><X size={24} /></button>
 
             <h2 className="text-2xl font-bold mb-1">Book {bookingTutor.profiles.full_name}</h2>
@@ -234,7 +251,7 @@ export default function FindTutorPage() {
                 className={`w-full p-4 rounded-xl border flex items-center justify-between transition
                   ${bookingTutor.is_online 
                     ? 'bg-green-500/10 border-green-500/50 hover:bg-green-500/20 cursor-pointer' 
-                    : 'bg-slate-800 border-slate-700 opacity-50 cursor-not-allowed'}
+                    : 'bg-slate-900 border-slate-700 opacity-50 cursor-not-allowed'}
                 `}
               >
                 <div className="flex items-center gap-3 text-left">

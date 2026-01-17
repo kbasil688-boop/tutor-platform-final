@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useRouter } from 'next/navigation';
-import { Mail, Lock, Loader2, ArrowRight, User, GraduationCap, School, CheckSquare, MessageSquare } from 'lucide-react';
+import { Mail, Lock, Loader2, ArrowRight, User, GraduationCap, School, CheckSquare, BookOpen, Trophy, Sparkles, Languages } from 'lucide-react';
 
 const PRESET_QUESTIONS = [
   "What is your 'Superpower' as a tutor?",
@@ -21,40 +21,32 @@ export default function AuthPage() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ text: string, type: 'error' | 'success' } | null>(null);
 
-  // Basic Fields
+  // Form Fields
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   
-  // Tutor Basic Fields
+  // Tutor Fields
   const [subject, setSubject] = useState('');
   const [price, setPrice] = useState('');
+  const [languageStr, setLanguageStr] = useState(''); // NEW
 
-  // Tutor Q&A State
-  // selectedQuestions tracks WHICH indices are picked (e.g. [0, 2, 4])
-  // answers tracks the text input (e.g. {0: "Patience", 2: "Analogies"})
+  // Tutor Q&A
   const [selectedIndices, setSelectedIndices] = useState<number[]>([]);
   const [answers, setAnswers] = useState<{[key: number]: string}>({});
 
-  // --- HELPER: Toggle Question Selection ---
   const toggleQuestion = (index: number) => {
     if (selectedIndices.includes(index)) {
-      // Unselect
       setSelectedIndices(selectedIndices.filter(i => i !== index));
       const newAnswers = { ...answers };
       delete newAnswers[index];
       setAnswers(newAnswers);
     } else {
-      // Select (Limit to 3)
-      if (selectedIndices.length < 3) {
-        setSelectedIndices([...selectedIndices, index]);
-      } else {
-        alert("You can only choose 3 questions!");
-      }
+      if (selectedIndices.length < 3) setSelectedIndices([...selectedIndices, index]);
+      else alert("You can only choose 3 questions!");
     }
   };
 
-  // --- PASSWORD RESET ---
   const handleResetPassword = async () => {
     if (!email) {
       setMessage({ text: "Please enter your email address first.", type: 'error' });
@@ -69,7 +61,6 @@ export default function AuthPage() {
     else setMessage({ text: "Check your email for the reset link!", type: 'success' });
   };
 
-  // --- AUTH LOGIC ---
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -77,26 +68,27 @@ export default function AuthPage() {
 
     try {
       if (isSignUp) {
-        
-        // Validation for Tutors
         if (role === 'tutor' && selectedIndices.length !== 3) {
           throw new Error("Please select and answer exactly 3 profile questions.");
         }
 
-        // === SIGN UP ===
-        const { data, error: authError } = await supabase.auth.signUp({ email, password });
+        const { data, error: authError } = await supabase.auth.signUp({ 
+          email, 
+          password,
+          options: {
+            // This ensures they are redirected back to your site after email confirmation
+            emailRedirectTo: `${window.location.origin}/auth/callback`
+          }
+        });
         if (authError) throw authError;
 
         if (data.user) {
-          // 1. Create Profile
           const { error: profileError } = await supabase.from('profiles').insert([
             { id: data.user.id, email: email, full_name: fullName, is_tutor: role === 'tutor' }
           ]);
           if (profileError) throw profileError;
 
-          // 2. Create Tutor Profile
           if (role === 'tutor') {
-            // Format the Q&A for the database
             const formattedQA = selectedIndices.map(index => ({
               question: PRESET_QUESTIONS[index],
               answer: answers[index]
@@ -110,30 +102,43 @@ export default function AuthPage() {
                 bio: `I teach ${subject}.`,
                 rating: 5.0,
                 is_online: true, 
+                languages: languageStr, // NEW
                 tags: [subject],
-                custom_questions: formattedQA // <--- SAVING THE 3 QUESTIONS HERE
+                custom_questions: formattedQA 
               }
             ]);
             if (tutorError) throw tutorError;
           }
-          setMessage({ text: "Account created! Logging you in...", type: 'success' });
-          router.push('/dashboard');
+          setMessage({ text: "Success! Please check your email to confirm your account.", type: 'success' });
         }
 
       } else {
         // === LOGIN ===
         const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) throw error;
+        
+        if (error) {
+            // CUSTOM ERROR MESSAGES
+            if (error.message.includes("Invalid login")) {
+                throw new Error("Invalid email or password. Please try again.");
+            } else if (error.message.includes("Email not confirmed")) {
+                throw new Error("Please verify your email before logging in.");
+            } else {
+                throw error;
+            }
+        }
 
-        // Auto Online
         if (data.user) {
            await supabase.from('tutors').update({ is_online: true }).eq('user_id', data.user.id);
         }
-
         router.push('/dashboard');
       }
     } catch (error: any) {
-      setMessage({ text: error.message || "An error occurred", type: 'error' });
+      // Catch "Failed to fetch" (Network error)
+      if (error.message === "Failed to fetch") {
+         setMessage({ text: "Network error. Please check your internet connection.", type: 'error' });
+      } else {
+         setMessage({ text: error.message || "An error occurred", type: 'error' });
+      }
     } finally {
       setLoading(false);
     }
@@ -142,14 +147,9 @@ export default function AuthPage() {
   return (
     <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4 py-10">
       <div className="bg-slate-800 border border-slate-700 p-8 rounded-2xl w-full max-w-md shadow-2xl">
-        
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-extrabold text-white mb-2">
-            {isSignUp ? 'Join TutorHub' : 'Welcome Back'}
-          </h1>
-          <p className="text-slate-400">
-            {isSignUp ? 'Create your profile.' : 'Login to your account.'}
-          </p>
+          <h1 className="text-3xl font-extrabold text-white mb-2">{isSignUp ? 'Join TutorHub' : 'Welcome Back'}</h1>
+          <p className="text-slate-400">{isSignUp ? 'Create your profile.' : 'Login to your account.'}</p>
         </div>
 
         {message && (
@@ -159,7 +159,6 @@ export default function AuthPage() {
         )}
 
         <form onSubmit={handleAuth} className="space-y-4">
-          
           {isSignUp && (
             <div className="grid grid-cols-2 gap-4 mb-6">
               <div onClick={() => setRole('student')} className={`cursor-pointer p-4 rounded-xl border flex flex-col items-center gap-2 transition ${role === 'student' ? 'bg-blue-600 border-blue-500 text-white' : 'bg-slate-900 border-slate-700 text-slate-400 hover:bg-slate-700'}`}>
@@ -202,7 +201,6 @@ export default function AuthPage() {
             )}
           </div>
 
-          {/* --- NEW: 3 of 5 QUESTIONS (Only for Tutors) --- */}
           {isSignUp && role === 'tutor' && (
             <div className="space-y-4 pt-4 border-t border-slate-700">
               <p className="text-yellow-400 text-sm font-bold text-center">Build Profile</p>
@@ -218,6 +216,12 @@ export default function AuthPage() {
                 </div>
               </div>
 
+              {/* NEW: LANGUAGES */}
+              <div>
+                <label className="block text-slate-400 text-xs uppercase font-bold mb-2 flex items-center gap-1"><Languages size={14}/> Languages (Comma separated)</label>
+                <input type="text" required className="w-full bg-slate-900 border border-slate-700 rounded-xl py-3 px-4 text-white focus:border-yellow-400 outline-none" placeholder="e.g. English, Zulu, Xhosa" value={languageStr} onChange={(e) => setLanguageStr(e.target.value)} />
+              </div>
+
               <div className="bg-slate-900 p-4 rounded-xl border border-slate-700">
                 <p className="text-white text-xs font-bold mb-4 flex items-center justify-between">
                    <span>Select 3 Questions to Answer:</span>
@@ -226,25 +230,14 @@ export default function AuthPage() {
                 <div className="space-y-3">
                   {PRESET_QUESTIONS.map((q, index) => (
                     <div key={index} className="space-y-2">
-                      <div 
-                        onClick={() => toggleQuestion(index)}
-                        className={`flex items-start gap-3 p-2 rounded-lg cursor-pointer transition ${selectedIndices.includes(index) ? 'bg-blue-900/30' : 'hover:bg-slate-800'}`}
-                      >
+                      <div onClick={() => toggleQuestion(index)} className={`flex items-start gap-3 p-2 rounded-lg cursor-pointer transition ${selectedIndices.includes(index) ? 'bg-blue-900/30' : 'hover:bg-slate-800'}`}>
                         <div className={`mt-0.5 w-4 h-4 rounded border flex items-center justify-center ${selectedIndices.includes(index) ? 'bg-blue-500 border-blue-500' : 'border-slate-500'}`}>
                           {selectedIndices.includes(index) && <CheckSquare size={10} className="text-white"/>}
                         </div>
                         <span className={`text-xs ${selectedIndices.includes(index) ? 'text-white font-bold' : 'text-slate-400'}`}>{q}</span>
                       </div>
-                      
-                      {/* Show Input if Selected */}
                       {selectedIndices.includes(index) && (
-                        <textarea 
-                          className="w-full bg-black/20 border border-slate-600 rounded-lg p-2 text-white text-sm focus:border-blue-500 outline-none h-16 ml-7 w-[calc(100%-1.75rem)]"
-                          placeholder="Type your answer here..."
-                          value={answers[index] || ''}
-                          onChange={(e) => setAnswers({...answers, [index]: e.target.value})}
-                          required
-                        />
+                        <textarea className="w-full bg-black/20 border border-slate-600 rounded-lg p-2 text-white text-sm focus:border-blue-500 outline-none h-16 ml-7 w-[calc(100%-1.75rem)]" placeholder="Type your answer here..." value={answers[index] || ''} onChange={(e) => setAnswers({...answers, [index]: e.target.value})} required />
                       )}
                     </div>
                   ))}
@@ -254,7 +247,7 @@ export default function AuthPage() {
           )}
 
           <button disabled={loading} className={`w-full font-bold py-4 rounded-xl transition flex items-center justify-center gap-2 mt-6 ${isSignUp && role === 'tutor' ? 'bg-yellow-400 hover:bg-yellow-300 text-black' : 'bg-blue-600 hover:bg-blue-500 text-white'}`}>
-            {loading ? <Loader2 className="animate-spin" /> : (isSignUp ? (role === 'tutor' ? 'Register as Tutor' : 'Register as Student') : 'Login')}
+            {loading ? <Loader2 className="animate-spin" /> : (isSignUp ? (role === 'tutor' ? 'Register' : 'Register') : 'Login')}
             {!loading && <ArrowRight size={20} />}
           </button>
         </form>
