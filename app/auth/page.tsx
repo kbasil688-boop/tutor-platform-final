@@ -82,7 +82,7 @@ export default function AuthPage() {
           password,
           options: {
             // This ensures they are redirected back to your site after email confirmation
-            emailRedirectTo: `${window.location.origin}/auth/callback`
+            emailRedirectTo: `${window.location.origin}/auth/`
           }
         });
         if (authError) throw authError;
