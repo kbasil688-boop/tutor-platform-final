@@ -8,20 +8,26 @@ import { useRouter } from 'next/navigation';
 
 export default function FindTutorPage() {
   const [guestEmails, setGuestEmails] = useState("");
-  const [topicDescription, setTopicDescription] = useState(""); // NEW STATE
+  const [topicDescription, setTopicDescription] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [tutors, setTutors] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   
+  // Modals
   const [bookingTutor, setBookingTutor] = useState<any>(null);
   const [profileTutor, setProfileTutor] = useState<any>(null);
   const [tutorLessons, setTutorLessons] = useState<any[]>([]);
+  
   const [scheduleDate, setScheduleDate] = useState("");
   const router = useRouter();
 
+  // 1. Fetch Tutors
   const fetchTutors = async () => {
     setLoading(true);
-    const { data, error } = await supabase.from('tutors').select('*, profiles(full_name, avatar_url)');
+    const { data, error } = await supabase
+      .from('tutors')
+      .select('*, profiles(full_name, avatar_url)');
+    
     if (error) console.error(error);
     else setTutors(data || []);
     setLoading(false);
@@ -31,14 +37,20 @@ export default function FindTutorPage() {
     fetchTutors();
   }, []);
 
+  // 2. Fetch Lessons for Profile View
   const handleViewProfile = async (tutor: any) => {
     setProfileTutor(tutor);
-    const { data } = await supabase.from('lessons').select('*').eq('tutor_id', tutor.user_id);
+    const { data } = await supabase
+      .from('lessons')
+      .select('*')
+      .eq('tutor_id', tutor.user_id);
     setTutorLessons(data || []);
   };
 
+  // 3. Booking Logic
   const handleBooking = async (type: 'live' | 'scheduled') => {
     const { data: { user } } = await supabase.auth.getUser();
+
     if (!user) {
       alert("Please login to book a tutor!");
       router.push('/auth');
@@ -56,7 +68,9 @@ export default function FindTutorPage() {
       return;
     }
 
-    const { error } = await supabase.from('bookings').insert([
+    const { error } = await supabase
+      .from('bookings')
+      .insert([
         { 
           student_id: user.id, 
           tutor_id: bookingTutor.id,
@@ -64,7 +78,7 @@ export default function FindTutorPage() {
           booking_type: type,
           scheduled_time: type === 'live' ? new Date().toISOString() : new Date(scheduleDate).toISOString(),
           guest_emails: guestEmails,
-          topic_description: topicDescription // SAVING THE TOPIC
+          topic_description: topicDescription
         }
       ]);
 
@@ -74,7 +88,7 @@ export default function FindTutorPage() {
       alert(type === 'live' ? "⚡ Live Request Sent! Wait for tutor." : "📅 Session Scheduled!");
       setBookingTutor(null);
       setGuestEmails(""); 
-      setTopicDescription(""); // Reset
+      setTopicDescription("");
       router.push('/dashboard');
     }
   };
@@ -86,33 +100,50 @@ export default function FindTutorPage() {
 
   return (
     <div className="min-h-screen bg-slate-900 text-white font-sans relative">
+      
+      {/* Header */}
       <header className="sticky top-0 z-10 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 p-4">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row gap-4 items-center justify-between">
           <Link href="/" className="flex items-center gap-2 text-slate-400 hover:text-white transition text-sm font-bold">
             <ArrowLeft size={16} /> BACK HOME
           </Link>
+          
           <div className="relative w-full max-w-xl">
             <Search className="absolute left-4 top-3.5 text-slate-400" size={20} />
-            <input type="text" placeholder="Search by Subject or Tutor Name..." className="w-full bg-slate-800 border border-slate-700 rounded-full py-3 pl-12 pr-4 text-white focus:outline-none focus:border-yellow-400 transition" onChange={(e) => setSearchTerm(e.target.value)} />
+            <input 
+              type="text" 
+              placeholder="Search by Subject or Tutor Name..." 
+              className="w-full bg-slate-800 border border-slate-700 rounded-full py-3 pl-12 pr-4 text-white focus:outline-none focus:border-yellow-400 transition"
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
           </div>
-          <button onClick={() => window.location.reload()} className="flex items-center gap-2 bg-slate-800 px-4 py-2 rounded-full hover:bg-slate-700 text-slate-400 text-xs font-bold transition border border-slate-700">
+          
+          <button 
+            onClick={() => window.location.reload()} 
+            className="flex items-center gap-2 bg-slate-800 px-4 py-2 rounded-full hover:bg-slate-700 text-slate-400 text-xs font-bold transition border border-slate-700"
+          >
             <RotateCcw size={14} /> REFRESH LIST
           </button>
         </div>
       </header>
 
+      {/* Main Content */}
       <main className="max-w-7xl mx-auto p-6">
+        
         {loading ? (
           <div className="text-center text-slate-500 mt-20">Loading available tutors...</div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredTutors.map((tutor) => (
               <div key={tutor.id} className="bg-slate-800 rounded-2xl p-6 border border-slate-700 hover:border-blue-500/30 transition group relative">
+                
+                {/* Online Badge */}
                 {tutor.is_online && (
                   <div className="absolute top-4 right-4 bg-green-500/20 text-green-400 text-xs font-bold px-2 py-1 rounded-full flex items-center gap-1 border border-green-500/30 animate-pulse">
                     <span className="w-2 h-2 bg-green-400 rounded-full"></span> LIVE
                   </div>
                 )}
+
                 <div className="flex items-start gap-4 mb-4">
                   <div className="w-16 h-16 rounded-full bg-slate-700 flex items-center justify-center text-2xl font-bold border-2 border-slate-600">
                     {tutor.profiles?.full_name?.[0] || "T"}
@@ -125,6 +156,7 @@ export default function FindTutorPage() {
                     </div>
                   </div>
                 </div>
+
                 <div className="mb-6">
                   <p className="text-slate-300 font-medium mb-2 text-sm line-clamp-2">{tutor.bio}</p>
                   <div className="flex gap-2 flex-wrap">
@@ -135,16 +167,24 @@ export default function FindTutorPage() {
                     ))}
                   </div>
                 </div>
+
                 <div className="flex flex-col gap-2 border-t border-slate-700 pt-4">
                    <div className="flex justify-between items-center mb-2">
                       <span className="block text-2xl font-bold text-white">R{tutor.price_per_hour}</span>
                       <span className="text-slate-500 text-xs">per hour</span>
                    </div>
+                   
                    <div className="grid grid-cols-2 gap-2">
-                     <button onClick={() => handleViewProfile(tutor)} className="bg-slate-700 hover:bg-slate-600 text-white font-bold py-2 rounded-xl transition text-sm flex items-center justify-center gap-2">
+                     <button 
+                       onClick={() => handleViewProfile(tutor)}
+                       className="bg-slate-700 hover:bg-slate-600 text-white font-bold py-2 rounded-xl transition text-sm flex items-center justify-center gap-2"
+                     >
                        <User size={16} /> Profile
                      </button>
-                     <button onClick={() => setBookingTutor(tutor)} className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded-xl transition text-sm flex items-center justify-center gap-2">
+                     <button 
+                       onClick={() => setBookingTutor(tutor)}
+                       className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded-xl transition text-sm flex items-center justify-center gap-2"
+                     >
                        <Clock size={16} /> Book
                      </button>
                    </div>
@@ -155,11 +195,14 @@ export default function FindTutorPage() {
         )}
       </main>
 
+      {/* --- PROFILE & LESSONS MODAL --- */}
       {profileTutor && (
         <div className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4">
           <div className="bg-slate-800 w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl border border-slate-700 relative shadow-2xl">
             <button onClick={() => setProfileTutor(null)} className="absolute top-4 right-4 text-slate-400 hover:text-white p-2 bg-slate-900 rounded-full"><X size={24} /></button>
+            
             <div className="p-8">
+              {/* Profile Header */}
               <div className="flex items-center gap-6 mb-8 border-b border-slate-700 pb-8">
                  <div className="w-24 h-24 rounded-full bg-slate-700 flex items-center justify-center text-4xl font-bold border-4 border-slate-600">
                     {profileTutor.profiles?.full_name?.[0]}
@@ -174,6 +217,7 @@ export default function FindTutorPage() {
                  </div>
               </div>
 
+              {/* --- ADDED: LANGUAGES BADGE --- */}
               {profileTutor.languages && (
                  <div className="mb-8">
                     <h3 className="text-slate-400 text-xs font-bold uppercase mb-3 flex items-center gap-2">
@@ -189,10 +233,12 @@ export default function FindTutorPage() {
                  </div>
               )}
 
+              {/* --- CUSTOM Q&A DISPLAY --- */}
               <div className="mb-8 space-y-4">
                  <h3 className="text-slate-400 text-xs font-bold uppercase mb-2 flex items-center gap-2">
                     <MessageSquare size={14}/> About {profileTutor.profiles?.full_name?.split(' ')[0]}
                  </h3>
+                 
                  {Array.isArray(profileTutor.custom_questions) && profileTutor.custom_questions.length > 0 ? (
                     profileTutor.custom_questions.map((item: any, idx: number) => (
                       <div key={idx} className="bg-slate-900 p-4 rounded-xl border border-slate-700">
@@ -206,9 +252,12 @@ export default function FindTutorPage() {
                     </div>
                  )}
               </div>
+
+              {/* Lessons List */}
               <h3 className="text-xl font-bold mb-4 flex items-center gap-2 border-t border-slate-700 pt-6">
                 <Video className="text-yellow-400" /> Recorded Lessons
               </h3>
+              
               <div className="space-y-3">
                  {tutorLessons.length === 0 ? (
                     <p className="text-slate-500 italic">No lessons yet.</p>
@@ -233,6 +282,7 @@ export default function FindTutorPage() {
         </div>
       )}
 
+      {/* --- BOOKING MODAL --- */}
       {bookingTutor && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-slate-800 w-[95%] md:w-full max-w-md rounded-3xl p-6 border border-slate-700 relative shadow-2xl">

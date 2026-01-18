@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useRouter } from 'next/navigation';
-import { Mail, Lock, Loader2, ArrowRight, User, GraduationCap, School, CheckSquare, Languages } from 'lucide-react';
+import { Mail, Lock, Loader2, ArrowRight, User, GraduationCap, School, CheckSquare, Languages, Eye, EyeOff } from 'lucide-react';
 
 const PRESET_QUESTIONS = [
   "What is your 'Superpower' as a tutor?",
@@ -15,12 +15,16 @@ const PRESET_QUESTIONS = [
 
 export default function AuthPage() {
   const router = useRouter();
+  
   const [isSignUp, setIsSignUp] = useState(false);
   const [role, setRole] = useState<'student' | 'tutor'>('student');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ text: string, type: 'error' | 'success' } | null>(null);
+  
+  // NEW: State for toggling password visibility
+  const [showPassword, setShowPassword] = useState(false);
 
-  // Fields
+  // Form Fields
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
@@ -69,7 +73,6 @@ export default function AuthPage() {
           throw new Error("Please select and answer exactly 3 profile questions.");
         }
 
-        // 1. PREPARE DATA (Pack the Suitcase)
         const formattedQA = selectedIndices.map(index => ({
           question: PRESET_QUESTIONS[index],
           answer: answers[index]
@@ -84,13 +87,12 @@ export default function AuthPage() {
           custom_questions: formattedQA
         };
 
-        // 2. SEND SIGNUP (Let Database handle creation after email confirm)
         const { error: authError } = await supabase.auth.signUp({ 
           email, 
           password,
           options: {
-            emailRedirectTo: `${window.location.origin}/auth`, // Go back to login page
-            data: metaData // Sending the data safely
+            emailRedirectTo: `${window.location.origin}/auth`, 
+            data: metaData
           }
         });
 
@@ -99,7 +101,6 @@ export default function AuthPage() {
         setMessage({ text: "Success! Please check your email to confirm your account.", type: 'success' });
 
       } else {
-        // === LOGIN ===
         const { data, error } = await supabase.auth.signInWithPassword({ email, password });
         
         if (error) {
@@ -169,7 +170,22 @@ export default function AuthPage() {
             <label className="block text-slate-400 text-xs uppercase font-bold mb-2">Password</label>
             <div className="relative">
               <Lock className="absolute left-3 top-3 text-slate-500" size={20} />
-              <input type="password" required className="w-full bg-slate-900 border border-slate-700 rounded-xl py-3 pl-10 pr-4 text-white focus:border-blue-500 outline-none" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} />
+              <input 
+                type={showPassword ? "text" : "password"} 
+                required 
+                className="w-full bg-slate-900 border border-slate-700 rounded-xl py-3 pl-10 pr-10 text-white focus:border-blue-500 outline-none" 
+                placeholder="••••••••" 
+                value={password} 
+                onChange={(e) => setPassword(e.target.value)} 
+              />
+              {/* SHOW PASSWORD TOGGLE EYE */}
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-3 text-slate-500 hover:text-white"
+              >
+                {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+              </button>
             </div>
             {!isSignUp && (
               <div className="text-right mt-2">
@@ -178,6 +194,7 @@ export default function AuthPage() {
             )}
           </div>
 
+          {/* ... TUTOR FIELDS (Same as before) ... */}
           {isSignUp && role === 'tutor' && (
             <div className="space-y-4 pt-4 border-t border-slate-700">
               <p className="text-yellow-400 text-sm font-bold text-center">Build Profile</p>

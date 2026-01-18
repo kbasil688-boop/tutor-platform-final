@@ -3,7 +3,8 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useRouter } from 'next/navigation';
-import { User, Calendar, DollarSign, Video, LogOut, Zap, Bell, Clock, Check, X as XIcon, Search, PlusCircle, Trash2, AlertCircle } from 'lucide-react';
+import Link from 'next/link'; // Added Link
+import { User, Calendar, DollarSign, Video, LogOut, Zap, Bell, Clock, Check, X as XIcon, Search, PlusCircle, Trash2, AlertCircle, GraduationCap } from 'lucide-react'; // Added GraduationCap
 
 export default function Dashboard() {
   const [profile, setProfile] = useState<any>(null);
@@ -173,7 +174,23 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-slate-900 text-white font-sans p-6">
+      
+      {/* BRAND HEADER (Logo) */}
+      <div className="max-w-4xl mx-auto mb-6">
+        <Link href="/" className="inline-block group cursor-pointer">
+          <div className="flex items-center gap-2">
+            <div className="bg-yellow-400/10 p-2 rounded-lg border border-yellow-400/20 group-hover:border-yellow-400/50 transition">
+              <GraduationCap className="text-yellow-400 group-hover:rotate-12 transition duration-300" size={24} />
+            </div>
+            <h1 className="text-xl font-extrabold tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-orange-500">
+              TUTOR<span className="text-white">HUB</span>
+            </h1>
+          </div>
+        </Link>
+      </div>
+
       <div className="max-w-4xl mx-auto">
+        {/* User Info Header */}
         <div className="flex flex-col md:flex-row justify-between items-center mb-8 border-b border-slate-700 pb-6 gap-4">
           <div className="flex items-center gap-4">
              <div className="bg-blue-600 w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold border-2 border-yellow-400">
