@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useRouter } from 'next/navigation';
-import { Mail, Lock, Loader2, ArrowRight, User, GraduationCap, School, CheckSquare, BookOpen, Trophy, Sparkles, Languages } from 'lucide-react';
+import { Mail, Lock, Loader2, ArrowRight, User, GraduationCap, School, CheckSquare, Languages } from 'lucide-react';
 
 const PRESET_QUESTIONS = [
   "What is your 'Superpower' as a tutor?",
@@ -15,23 +15,20 @@ const PRESET_QUESTIONS = [
 
 export default function AuthPage() {
   const router = useRouter();
-  
   const [isSignUp, setIsSignUp] = useState(false);
   const [role, setRole] = useState<'student' | 'tutor'>('student');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ text: string, type: 'error' | 'success' } | null>(null);
 
-  // Form Fields
+  // Fields
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
-  
-  // Tutor Fields
   const [subject, setSubject] = useState('');
   const [price, setPrice] = useState('');
-  const [languageStr, setLanguageStr] = useState(''); // NEW
-
-  // Tutor Q&A
+  const [languageStr, setLanguageStr] = useState('');
+  
+  // Q&A
   const [selectedIndices, setSelectedIndices] = useState<number[]>([]);
   const [answers, setAnswers] = useState<{[key: number]: string}>({});
 
@@ -53,14 +50,9 @@ export default function AuthPage() {
       return;
     }
     setLoading(true);
-    
-    // FIX: Use window.location.origin to automatically get the correct domain (Localhost or Vercel)
-    const redirectUrl = `${window.location.origin}/auth/reset-password`;
-
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: redirectUrl,
+      redirectTo: `${window.location.origin}/auth/reset-password`,
     });
-    
     setLoading(false);
     if (error) setMessage({ text: error.message, type: 'error' });
     else setMessage({ text: "Check your email for the reset link!", type: 'success' });
@@ -77,59 +69,43 @@ export default function AuthPage() {
           throw new Error("Please select and answer exactly 3 profile questions.");
         }
 
-        const { data, error: authError } = await supabase.auth.signUp({ 
+        // 1. PREPARE DATA (Pack the Suitcase)
+        const formattedQA = selectedIndices.map(index => ({
+          question: PRESET_QUESTIONS[index],
+          answer: answers[index]
+        }));
+
+        const metaData = {
+          full_name: fullName,
+          is_tutor: role === 'tutor',
+          subject: subject,
+          price: price,
+          languages: languageStr,
+          custom_questions: formattedQA
+        };
+
+        // 2. SEND SIGNUP (Let Database handle creation after email confirm)
+        const { error: authError } = await supabase.auth.signUp({ 
           email, 
           password,
           options: {
-            // This ensures they are redirected back to your site after email confirmation
-            emailRedirectTo: `${window.location.origin}/auth/`
+            emailRedirectTo: `${window.location.origin}/auth`, // Go back to login page
+            data: metaData // Sending the data safely
           }
         });
+
         if (authError) throw authError;
 
-        if (data.user) {
-          const { error: profileError } = await supabase.from('profiles').insert([
-            { id: data.user.id, email: email, full_name: fullName, is_tutor: role === 'tutor' }
-          ]);
-          if (profileError) throw profileError;
-
-          if (role === 'tutor') {
-            const formattedQA = selectedIndices.map(index => ({
-              question: PRESET_QUESTIONS[index],
-              answer: answers[index]
-            }));
-
-            const { error: tutorError } = await supabase.from('tutors').insert([
-              {
-                user_id: data.user.id,
-                subject: subject,
-                price_per_hour: parseInt(price),
-                bio: `I teach ${subject}.`,
-                rating: 5.0,
-                is_online: true, 
-                languages: languageStr, // NEW
-                tags: [subject],
-                custom_questions: formattedQA 
-              }
-            ]);
-            if (tutorError) throw tutorError;
-          }
-          setMessage({ text: "Success! Please check your email to confirm your account.", type: 'success' });
-        }
+        setMessage({ text: "Success! Please check your email to confirm your account.", type: 'success' });
 
       } else {
         // === LOGIN ===
         const { data, error } = await supabase.auth.signInWithPassword({ email, password });
         
         if (error) {
-            // CUSTOM ERROR MESSAGES
-            if (error.message.includes("Invalid login")) {
-                throw new Error("Invalid email or password. Please try again.");
-            } else if (error.message.includes("Email not confirmed")) {
-                throw new Error("Please verify your email before logging in.");
-            } else {
-                throw error;
-            }
+            if (error.message.includes("Invalid login")) throw new Error("Invalid email or password.");
+            else if (error.message.includes("Email not confirmed")) throw new Error("Please verify your email first.");
+            else throw error;
         }
 
         if (data.user) {
@@ -138,12 +114,8 @@ export default function AuthPage() {
         router.push('/dashboard');
       }
     } catch (error: any) {
-      // Catch "Failed to fetch" (Network error)
-      if (error.message === "Failed to fetch") {
-         setMessage({ text: "Network error. Please check your internet connection.", type: 'error' });
-      } else {
-         setMessage({ text: error.message || "An error occurred", type: 'error' });
-      }
+      if (error.message === "Failed to fetch") setMessage({ text: "Network error.", type: 'error' });
+      else setMessage({ text: error.message, type: 'error' });
     } finally {
       setLoading(false);
     }
@@ -221,7 +193,6 @@ export default function AuthPage() {
                 </div>
               </div>
 
-              {/* NEW: LANGUAGES */}
               <div>
                 <label className="block text-slate-400 text-xs uppercase font-bold mb-2 flex items-center gap-1"><Languages size={14}/> Languages (Comma separated)</label>
                 <input type="text" required className="w-full bg-slate-900 border border-slate-700 rounded-xl py-3 px-4 text-white focus:border-yellow-400 outline-none" placeholder="e.g. English, Zulu, Xhosa" value={languageStr} onChange={(e) => setLanguageStr(e.target.value)} />
