@@ -1,13 +1,14 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Search, Star, Clock, Zap, Calendar, ArrowLeft, X, Video, User, RotateCcw, ExternalLink, MessageSquare, Languages } from 'lucide-react';
+import { Search, Filter, Star, Clock, Zap, Calendar, ArrowLeft, X, Video, User, RotateCcw, ExternalLink, MessageSquare, Languages } from 'lucide-react';
 import Link from 'next/link';
 import { supabase } from '../lib/supabaseClient';
 import { useRouter } from 'next/navigation';
 
 export default function FindTutorPage() {
   const [guestEmails, setGuestEmails] = useState("");
+  const [topicDescription, setTopicDescription] = useState(""); // NEW STATE
   const [searchTerm, setSearchTerm] = useState("");
   const [tutors, setTutors] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -49,6 +50,12 @@ export default function FindTutorPage() {
       return;
     }
 
+    // CHECK: Ensure they typed a topic
+    if (!topicDescription.trim()) {
+      alert("Please tell the tutor what you are struggling with!");
+      return;
+    }
+
     const { error } = await supabase.from('bookings').insert([
         { 
           student_id: user.id, 
@@ -56,7 +63,8 @@ export default function FindTutorPage() {
           status: 'pending',
           booking_type: type,
           scheduled_time: type === 'live' ? new Date().toISOString() : new Date(scheduleDate).toISOString(),
-          guest_emails: guestEmails
+          guest_emails: guestEmails,
+          topic_description: topicDescription // SAVING THE TOPIC
         }
       ]);
 
@@ -66,6 +74,7 @@ export default function FindTutorPage() {
       alert(type === 'live' ? "⚡ Live Request Sent! Wait for tutor." : "📅 Session Scheduled!");
       setBookingTutor(null);
       setGuestEmails(""); 
+      setTopicDescription(""); // Reset
       router.push('/dashboard');
     }
   };
@@ -165,7 +174,6 @@ export default function FindTutorPage() {
                  </div>
               </div>
 
-              {/* --- LANGUAGES BADGE (UPDATED) --- */}
               {profileTutor.languages && (
                  <div className="mb-8">
                     <h3 className="text-slate-400 text-xs font-bold uppercase mb-3 flex items-center gap-2">
@@ -234,6 +242,18 @@ export default function FindTutorPage() {
             <p className="text-slate-400 text-sm mb-6">Subject: {bookingTutor.subject}</p>
 
             <div className="space-y-4">
+              
+              {/* NEW: TOPIC DESCRIPTION INPUT */}
+              <div className="bg-slate-900 border border-slate-700 p-4 rounded-xl">
+                 <label className="block text-xs font-bold text-slate-400 mb-2 uppercase">What are you struggling with?</label>
+                 <textarea 
+                   className="w-full bg-slate-800 border border-slate-600 rounded-lg p-2 text-white text-sm focus:border-blue-500 outline-none h-20"
+                   placeholder="e.g. I need help with Linear Algebra, specifically Eigenvalues..."
+                   value={topicDescription}
+                   onChange={(e) => setTopicDescription(e.target.value)}
+                 />
+              </div>
+
               <div className="bg-slate-900 border border-slate-700 p-4 rounded-xl">
                  <label className="block text-xs font-bold text-slate-400 mb-2 uppercase">Group Session? (Max 4)</label>
                  <input 
