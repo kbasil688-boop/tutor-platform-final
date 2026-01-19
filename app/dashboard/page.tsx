@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { User, Calendar, DollarSign, Video, LogOut, Zap, Bell, Clock, Check, X as XIcon, Search, PlusCircle, Trash2, AlertCircle, GraduationCap, Copy, Users } from 'lucide-react'; // Added Copy, Users
+import { User, Calendar, DollarSign, Video, LogOut, Zap, Bell, Clock, Check, X as XIcon, Search, PlusCircle, Trash2, AlertCircle, GraduationCap, Copy, Users } from 'lucide-react';
 
 export default function Dashboard() {
   const [profile, setProfile] = useState<any>(null);
@@ -73,18 +73,14 @@ export default function Dashboard() {
       }
     }
     
-    // FILTER LOGIC
     const now = new Date();
     const cleanBookings = fetchedBookings.filter((b: any) => {
-      // NOTE: Hide rejected bookings for Tutor, keep for Student
       if (profileData?.is_tutor && b.status === 'rejected') return false; 
-      
       if (b.status === 'pending') {
          const bookingTime = new Date(b.scheduled_time || b.created_at);
          const expiryTime = b.booking_type === 'live' 
-            ? new Date(new Date(b.created_at).getTime() + 10 * 60000) // 10 mins for Live
+            ? new Date(new Date(b.created_at).getTime() + 10 * 60000) 
             : bookingTime; 
-
          if (now > expiryTime) return false; 
       }
       return true;
@@ -160,7 +156,6 @@ export default function Dashboard() {
     router.push('/');
   };
 
-  // --- NEW: Copy Link Function ---
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
     alert("Link copied! Send it to your group.");
@@ -259,8 +254,7 @@ export default function Dashboard() {
                          }
                        </h3>
                        
-                       {/* Show Guests */}
-                       {booking.guest_emails && (
+                       {profile?.is_tutor && booking.guest_emails && (
                          <div className="mt-1 bg-blue-500/10 border border-blue-500/30 p-2 rounded-lg">
                            <p className="text-xs text-blue-300 font-bold mb-1 flex items-center gap-1"><Users size={12}/> Group Session (+ Guests):</p>
                            <p className="text-xs text-slate-300 break-all">{booking.guest_emails}</p>
@@ -294,8 +288,8 @@ export default function Dashboard() {
                                    <Video size={16} /> JOIN CALL
                                 </a>
                                 
-                                {/* --- NEW: COPY LINK BUTTON FOR GROUPS --- */}
-                                {booking.guest_emails && (
+                                {/* FIX IS HERE: Only show COPY button if NOT tutor AND guests exist */}
+                                {!profile?.is_tutor && booking.guest_emails && (
                                   <button 
                                     onClick={() => copyToClipboard(ensureProtocol(booking.meeting_link))} 
                                     className="bg-slate-700 hover:bg-slate-600 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 w-fit text-xs"
