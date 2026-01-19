@@ -156,6 +156,7 @@ export default function Home() {
                 <li className="flex items-center gap-3 text-slate-300"><CheckCircle className="text-green-500" size={20}/> Tutors from your own University and neighbouring universities</li>
                 <li className="flex items-center gap-3 text-slate-300"><CheckCircle className="text-green-500" size={20}/> Affordable Student Rates</li>
                 <li className="flex items-center gap-3 text-slate-300"><CheckCircle className="text-green-500" size={20}/> Instant Availability</li>
+                <li className="flex items-center gap-3 text-slate-300"><CheckCircle className="text-green-500" size={20}/> Group Sessions (Invite friends & split the cost)</li>
               </ul>
            </div>
            

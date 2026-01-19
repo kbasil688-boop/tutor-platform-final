@@ -3,8 +3,8 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link'; // Added Link
-import { User, Calendar, DollarSign, Video, LogOut, Zap, Bell, Clock, Check, X as XIcon, Search, PlusCircle, Trash2, AlertCircle, GraduationCap } from 'lucide-react'; // Added GraduationCap
+import Link from 'next/link';
+import { User, Calendar, DollarSign, Video, LogOut, Zap, Bell, Clock, Check, X as XIcon, Search, PlusCircle, Trash2, AlertCircle, GraduationCap, Copy, Users } from 'lucide-react'; // Added Copy, Users
 
 export default function Dashboard() {
   const [profile, setProfile] = useState<any>(null);
@@ -107,7 +107,6 @@ export default function Dashboard() {
     if (error) alert("Status update failed: " + error.message);
   };
 
-  // --- UPDATED: SILENT REJECTION ---
   const handleBookingAction = async (bookingId: number, action: 'confirmed' | 'rejected') => {
     let link = null;
     let reason = null;
@@ -118,10 +117,9 @@ export default function Dashboard() {
       link = rawLink.trim();
     } 
     
-    // CHANGE: If rejected, we just set a default message silently
     if (action === 'rejected') {
       if (!confirm("Are you sure you want to reject this request?")) return;
-      reason = "Tutor is currently unavailable."; // Default polite message
+      reason = "Tutor is currently unavailable.";
     }
 
     await supabase.from('bookings').update({ 
@@ -162,6 +160,12 @@ export default function Dashboard() {
     router.push('/');
   };
 
+  // --- NEW: Copy Link Function ---
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    alert("Link copied! Send it to your group.");
+  };
+
   const getStatusColor = (status: string) => {
     switch(status) {
       case 'confirmed': return 'text-green-400 border-green-500/50 bg-green-500/10';
@@ -190,7 +194,6 @@ export default function Dashboard() {
       </div>
 
       <div className="max-w-4xl mx-auto">
-        {/* User Info Header */}
         <div className="flex flex-col md:flex-row justify-between items-center mb-8 border-b border-slate-700 pb-6 gap-4">
           <div className="flex items-center gap-4">
              <div className="bg-blue-600 w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold border-2 border-yellow-400">
@@ -256,9 +259,10 @@ export default function Dashboard() {
                          }
                        </h3>
                        
-                       {profile?.is_tutor && booking.guest_emails && (
+                       {/* Show Guests */}
+                       {booking.guest_emails && (
                          <div className="mt-1 bg-blue-500/10 border border-blue-500/30 p-2 rounded-lg">
-                           <p className="text-xs text-blue-300 font-bold mb-1">📢 Group Session (+ Guests):</p>
+                           <p className="text-xs text-blue-300 font-bold mb-1 flex items-center gap-1"><Users size={12}/> Group Session (+ Guests):</p>
                            <p className="text-xs text-slate-300 break-all">{booking.guest_emails}</p>
                          </div>
                        )}
@@ -283,11 +287,22 @@ export default function Dashboard() {
                           ) : (
                             <span>📅 {new Date(booking.scheduled_time || booking.created_at).toLocaleString()}</span>
                           )}
+                          
                           {booking.meeting_link && (
-                            <div className="flex flex-col gap-1 mt-1">
+                            <div className="flex flex-col md:flex-row gap-2 mt-1">
                                 <a href={ensureProtocol(booking.meeting_link)} target="_blank" rel="noopener noreferrer" className="bg-green-600 hover:bg-green-500 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 w-fit animate-pulse">
                                    <Video size={16} /> JOIN CALL
                                 </a>
+                                
+                                {/* --- NEW: COPY LINK BUTTON FOR GROUPS --- */}
+                                {booking.guest_emails && (
+                                  <button 
+                                    onClick={() => copyToClipboard(ensureProtocol(booking.meeting_link))} 
+                                    className="bg-slate-700 hover:bg-slate-600 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 w-fit text-xs"
+                                  >
+                                     <Copy size={16} /> Copy Link for Friends
+                                  </button>
+                                )}
                             </div>
                           )}
                        </div>

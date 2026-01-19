@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useRouter } from 'next/navigation';
-import { Mail, Lock, Loader2, ArrowRight, User, GraduationCap, School, CheckSquare, Languages, Eye, EyeOff } from 'lucide-react';
+import { Mail, Lock, Loader2, ArrowRight, User, GraduationCap, School, CheckSquare, BookOpen, Trophy, Sparkles, Languages, Eye, EyeOff } from 'lucide-react';
 
 const PRESET_QUESTIONS = [
   "What is your 'Superpower' as a tutor?",
@@ -21,18 +21,20 @@ export default function AuthPage() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ text: string, type: 'error' | 'success' } | null>(null);
   
-  // NEW: State for toggling password visibility
+  // PASSWORD VISIBILITY STATE
   const [showPassword, setShowPassword] = useState(false);
 
   // Form Fields
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
+  
+  // Tutor Fields
   const [subject, setSubject] = useState('');
   const [price, setPrice] = useState('');
   const [languageStr, setLanguageStr] = useState('');
-  
-  // Q&A
+
+  // Tutor Q&A
   const [selectedIndices, setSelectedIndices] = useState<number[]>([]);
   const [answers, setAnswers] = useState<{[key: number]: string}>({});
 
@@ -115,7 +117,7 @@ export default function AuthPage() {
         router.push('/dashboard');
       }
     } catch (error: any) {
-      if (error.message === "Failed to fetch") setMessage({ text: "Network error.", type: 'error' });
+      if (error.message === "Failed to fetch") setMessage({ text: "Network error. Please check your internet connection.", type: 'error' });
       else setMessage({ text: error.message, type: 'error' });
     } finally {
       setLoading(false);
@@ -173,12 +175,12 @@ export default function AuthPage() {
               <input 
                 type={showPassword ? "text" : "password"} 
                 required 
-                className="w-full bg-slate-900 border border-slate-700 rounded-xl py-3 pl-10 pr-10 text-white focus:border-blue-500 outline-none" 
+                // The [&::-ms-reveal]:hidden hides the Edge/IE default eye
+                className="w-full bg-slate-900 border border-slate-700 rounded-xl py-3 pl-10 pr-10 text-white focus:border-blue-500 outline-none [&::-ms-reveal]:hidden" 
                 placeholder="••••••••" 
                 value={password} 
                 onChange={(e) => setPassword(e.target.value)} 
               />
-              {/* SHOW PASSWORD TOGGLE EYE */}
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
@@ -194,7 +196,6 @@ export default function AuthPage() {
             )}
           </div>
 
-          {/* ... TUTOR FIELDS (Same as before) ... */}
           {isSignUp && role === 'tutor' && (
             <div className="space-y-4 pt-4 border-t border-slate-700">
               <p className="text-yellow-400 text-sm font-bold text-center">Build Profile</p>
