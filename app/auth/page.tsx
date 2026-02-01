@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useRouter } from 'next/navigation';
-import { Mail, Lock, Loader2, ArrowRight, User, GraduationCap, School, CheckSquare, BookOpen, Trophy, Sparkles, Languages, Eye, EyeOff } from 'lucide-react';
+import { Mail, Lock, Loader2, ArrowRight, User, GraduationCap, School, CheckSquare, Languages, Eye, EyeOff } from 'lucide-react';
 
 const PRESET_QUESTIONS = [
   "What is your 'Superpower' as a tutor?",
@@ -20,21 +20,20 @@ export default function AuthPage() {
   const [role, setRole] = useState<'student' | 'tutor'>('student');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ text: string, type: 'error' | 'success' } | null>(null);
-  
-  // PASSWORD VISIBILITY STATE
   const [showPassword, setShowPassword] = useState(false);
+  
+  // NEW: Confirmation State
+  const [confirmationSent, setConfirmationSent] = useState(false);
 
-  // Form Fields
+  // Fields
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
-  
-  // Tutor Fields
   const [subject, setSubject] = useState('');
   const [price, setPrice] = useState('');
   const [languageStr, setLanguageStr] = useState('');
-
-  // Tutor Q&A
+  
+  // Q&A
   const [selectedIndices, setSelectedIndices] = useState<number[]>([]);
   const [answers, setAnswers] = useState<{[key: number]: string}>({});
 
@@ -75,6 +74,7 @@ export default function AuthPage() {
           throw new Error("Please select and answer exactly 3 profile questions.");
         }
 
+        // 1. Prepare Metadata
         const formattedQA = selectedIndices.map(index => ({
           question: PRESET_QUESTIONS[index],
           answer: answers[index]
@@ -89,6 +89,7 @@ export default function AuthPage() {
           custom_questions: formattedQA
         };
 
+        // 2. Send Signup
         const { error: authError } = await supabase.auth.signUp({ 
           email, 
           password,
@@ -100,9 +101,11 @@ export default function AuthPage() {
 
         if (authError) throw authError;
 
-        setMessage({ text: "Success! Please check your email to confirm your account.", type: 'success' });
+        // SHOW SUCCESS SCREEN
+        setConfirmationSent(true);
 
       } else {
+        // === LOGIN ===
         const { data, error } = await supabase.auth.signInWithPassword({ email, password });
         
         if (error) {
@@ -124,6 +127,27 @@ export default function AuthPage() {
     }
   };
 
+  // --- CONFIRMATION SCREEN ---
+  if (confirmationSent) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
+        <div className="bg-slate-800 border border-slate-700 p-10 rounded-3xl w-full max-w-md text-center shadow-2xl">
+           <div className="w-20 h-20 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
+              <Mail className="text-green-500" size={40} />
+           </div>
+           <h2 className="text-3xl font-bold text-white mb-4">Check Your Inbox</h2>
+           <p className="text-slate-300 mb-8 leading-relaxed">
+             We have sent a verification link to <span className="text-white font-bold">{email}</span>.
+             <br/><br/>
+             Please click the link to activate your account and start your journey with TutorHub!
+           </p>
+          
+        </div>
+      </div>
+    );
+  }
+
+  // --- STANDARD AUTH FORM ---
   return (
     <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4 py-10">
       <div className="bg-slate-800 border border-slate-700 p-8 rounded-2xl w-full max-w-md shadow-2xl">
@@ -175,7 +199,6 @@ export default function AuthPage() {
               <input 
                 type={showPassword ? "text" : "password"} 
                 required 
-                // The [&::-ms-reveal]:hidden hides the Edge/IE default eye
                 className="w-full bg-slate-900 border border-slate-700 rounded-xl py-3 pl-10 pr-10 text-white focus:border-blue-500 outline-none [&::-ms-reveal]:hidden" 
                 placeholder="••••••••" 
                 value={password} 

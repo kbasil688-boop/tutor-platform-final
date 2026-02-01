@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Search, Filter, Star, Clock, Zap, Calendar, ArrowLeft, X, Video, User, RotateCcw, ExternalLink, MessageSquare, Languages } from 'lucide-react';
+import { Search, Filter, Star, Clock, Zap, Calendar, ArrowLeft, X, Video, User, RotateCcw, ExternalLink, MessageSquare, Languages, ShieldCheck, GraduationCap } from 'lucide-react';
 import Link from 'next/link';
 import { supabase } from '../lib/supabaseClient';
 import { useRouter } from 'next/navigation';
@@ -104,8 +104,15 @@ export default function FindTutorPage() {
       {/* Header */}
       <header className="sticky top-0 z-10 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 p-4">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row gap-4 items-center justify-between">
-          <Link href="/" className="flex items-center gap-2 text-slate-400 hover:text-white transition text-sm font-bold">
-            <ArrowLeft size={16} /> BACK HOME
+          
+          {/* LOGO SECTION */}
+          <Link href="/" className="flex items-center gap-2 group cursor-pointer">
+            <div className="bg-yellow-400/10 p-2 rounded-lg border border-yellow-400/20 group-hover:border-yellow-400/50 transition">
+              <GraduationCap className="text-yellow-400 group-hover:rotate-12 transition duration-300" size={24} />
+            </div>
+            <h1 className="text-xl font-extrabold tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-orange-500">
+              TUTOR<span className="text-white">HUB</span>
+            </h1>
           </Link>
           
           <div className="relative w-full max-w-xl">
@@ -149,7 +156,13 @@ export default function FindTutorPage() {
                     {tutor.profiles?.full_name?.[0] || "T"}
                   </div>
                   <div>
-                    <h3 className="text-xl font-bold">{tutor.profiles?.full_name || "Tutor"}</h3> 
+                    <h3 className="text-xl font-bold flex items-center gap-2">
+                       {tutor.profiles?.full_name || "Tutor"}
+                       {/* VERIFIED BADGE */}
+                       {tutor.verification_status === 'verified' && (
+                          <ShieldCheck size={18} className="text-blue-400" fill="currentColor" stroke="black" />
+                       )}
+                    </h3>
                     <p className="text-slate-400 text-sm">{tutor.subject}</p>
                     <div className="flex items-center gap-1 text-yellow-400 text-sm font-bold mt-1">
                       <Star size={14} fill="currentColor" /> {tutor.rating}
@@ -208,7 +221,10 @@ export default function FindTutorPage() {
                     {profileTutor.profiles?.full_name?.[0]}
                  </div>
                  <div>
-                    <h2 className="text-3xl font-bold">{profileTutor.profiles?.full_name}</h2>
+                    <h2 className="text-3xl font-bold flex items-center gap-2">
+                        {profileTutor.profiles?.full_name}
+                        {profileTutor.verification_status === 'verified' && <ShieldCheck size={24} className="text-blue-400" fill="currentColor" stroke="black" />}
+                    </h2>
                     <p className="text-blue-400 font-bold text-lg">{profileTutor.subject}</p>
                     <div className="flex items-center gap-2 mt-2">
                        <span className="bg-yellow-400/20 text-yellow-400 px-2 py-1 rounded text-xs font-bold flex items-center gap-1"><Star size={12}/> {profileTutor.rating} Rating</span>
@@ -217,7 +233,7 @@ export default function FindTutorPage() {
                  </div>
               </div>
 
-              {/* --- ADDED: LANGUAGES BADGE --- */}
+              {/* --- LANGUAGES BADGE --- */}
               {profileTutor.languages && (
                  <div className="mb-8">
                     <h3 className="text-slate-400 text-xs font-bold uppercase mb-3 flex items-center gap-2">
@@ -233,7 +249,7 @@ export default function FindTutorPage() {
                  </div>
               )}
 
-              {/* --- CUSTOM Q&A DISPLAY --- */}
+              {/* --- RICH PROFILE ANSWERS --- */}
               <div className="mb-8 space-y-4">
                  <h3 className="text-slate-400 text-xs font-bold uppercase mb-2 flex items-center gap-2">
                     <MessageSquare size={14}/> About {profileTutor.profiles?.full_name?.split(' ')[0]}
@@ -270,7 +286,7 @@ export default function FindTutorPage() {
                          </div>
                          <a href={lesson.video_url} target="_blank" rel="noopener noreferrer">
                             <button className="text-xs bg-slate-800 text-white px-3 py-1.5 rounded-lg hover:bg-red-600 transition flex items-center gap-1">
-                               <ExternalLink size={12} /> Watch
+                               <ExternalLink size={12} /> Watch on YouTube
                             </button>
                          </a>
                       </div>
@@ -285,7 +301,7 @@ export default function FindTutorPage() {
       {/* --- BOOKING MODAL --- */}
       {bookingTutor && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-800 w-[95%] md:w-full max-w-md rounded-3xl p-6 border border-slate-700 relative shadow-2xl">
+          <div className="bg-slate-800 w-full max-w-md rounded-3xl p-6 border border-slate-700 relative shadow-2xl">
             <button onClick={() => setBookingTutor(null)} className="absolute top-4 right-4 text-slate-400 hover:text-white"><X size={24} /></button>
 
             <h2 className="text-2xl font-bold mb-1">Book {bookingTutor.profiles.full_name}</h2>
@@ -293,7 +309,7 @@ export default function FindTutorPage() {
 
             <div className="space-y-4">
               
-              {/* NEW: TOPIC DESCRIPTION INPUT */}
+              {/* TOPIC INPUT */}
               <div className="bg-slate-900 border border-slate-700 p-4 rounded-xl">
                  <label className="block text-xs font-bold text-slate-400 mb-2 uppercase">What are you struggling with?</label>
                  <textarea 
@@ -304,6 +320,7 @@ export default function FindTutorPage() {
                  />
               </div>
 
+              {/* GROUP INPUT */}
               <div className="bg-slate-900 border border-slate-700 p-4 rounded-xl">
                  <label className="block text-xs font-bold text-slate-400 mb-2 uppercase">Group Session? (Max 4)</label>
                  <input 
@@ -315,6 +332,7 @@ export default function FindTutorPage() {
                  />
               </div>
 
+              {/* Live Request */}
               <button 
                 onClick={() => handleBooking('live')}
                 disabled={!bookingTutor.is_online}
@@ -339,6 +357,7 @@ export default function FindTutorPage() {
                 </div>
               </button>
 
+              {/* Schedule */}
               <div className="bg-slate-900 border border-slate-700 p-4 rounded-xl">
                  <div className="flex items-center gap-3 mb-3">
                     <div className="p-2 rounded-full bg-blue-600 text-white"><Calendar size={20} /></div>

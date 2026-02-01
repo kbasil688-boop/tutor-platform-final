@@ -4,13 +4,14 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { User, Calendar, DollarSign, Video, LogOut, Zap, Bell, Clock, Check, X as XIcon, Search, PlusCircle, Trash2, AlertCircle, GraduationCap, Copy, Users } from 'lucide-react';
+import { User, Calendar, DollarSign, Video, LogOut, Zap, Bell, Clock, Check, X as XIcon, Search, PlusCircle, Trash2, AlertCircle, GraduationCap, Copy, Users, ShieldCheck, Upload } from 'lucide-react';
 
 export default function Dashboard() {
   const [profile, setProfile] = useState<any>(null);
   const [tutorData, setTutorData] = useState<any>(null);
   const [bookings, setBookings] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [uploadingFile, setUploadingFile] = useState(false); // For Transcript
   const router = useRouter();
 
   const ensureProtocol = (url: string) => {
@@ -73,9 +74,12 @@ export default function Dashboard() {
       }
     }
     
+    // FILTER LOGIC
     const now = new Date();
     const cleanBookings = fetchedBookings.filter((b: any) => {
+      // Hide rejected bookings for Tutor, keep for Student
       if (profileData?.is_tutor && b.status === 'rejected') return false; 
+      
       if (b.status === 'pending') {
          const bookingTime = new Date(b.scheduled_time || b.created_at);
          const expiryTime = b.booking_type === 'live' 
@@ -94,6 +98,44 @@ export default function Dashboard() {
   useEffect(() => {
     refreshData();
   }, [router]);
+
+  // --- ACTIONS ---
+
+  // 1. TRANSCRIPT UPLOAD
+  const handleTranscriptUpload = async (event: any) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    setUploadingFile(true);
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${tutorData.id}-transcript.${fileExt}`;
+    const filePath = `${fileName}`;
+
+    // Upload to Supabase Storage
+    const { error: uploadError } = await supabase.storage
+      .from('transcripts')
+      .upload(filePath, file, { upsert: true });
+
+    if (uploadError) {
+      alert("Upload failed: " + uploadError.message);
+      setUploadingFile(false);
+      return;
+    }
+
+    // Update Status
+    const { error: dbError } = await supabase
+      .from('tutors')
+      .update({ verification_status: 'pending' })
+      .eq('id', tutorData.id);
+
+    if (dbError) {
+      alert("Database error: " + dbError.message);
+    } else {
+      alert("Transcript uploaded! We will review it shortly.");
+      refreshData();
+    }
+    setUploadingFile(false);
+  };
 
   const toggleOnline = async () => {
     if (!tutorData) return;
@@ -118,12 +160,7 @@ export default function Dashboard() {
       reason = "Tutor is currently unavailable.";
     }
 
-    await supabase.from('bookings').update({ 
-        status: action, 
-        meeting_link: link,
-        rejection_reason: reason 
-    }).eq('id', bookingId);
-    
+    await supabase.from('bookings').update({ status: action, meeting_link: link, rejection_reason: reason }).eq('id', bookingId);
     refreshData();
   };
 
@@ -214,11 +251,68 @@ export default function Dashboard() {
           </div>
         </div>
 
+        {/* --- VERIFICATION SECTION (TUTORS ONLY) --- */}
+        {profile?.is_tutor && (
+          <div className="mb-10 bg-slate-800 p-6 rounded-2xl border border-slate-700 relative overflow-hidden">
+             
+             {/* Status: Verified */}
+             {tutorData?.verification_status === 'verified' && (
+                <div className="flex items-center gap-4 text-green-400">
+                   <ShieldCheck size={32} />
+                   <div>
+                      <h3 className="font-bold text-lg">You are a Verified Tutor</h3>
+                      <p className="text-slate-400 text-sm">You have the Blue Badge on your profile.</p>
+                   </div>
+                </div>
+             )}
+
+             {/* Status: Pending */}
+             {tutorData?.verification_status === 'pending' && (
+                <div className="flex items-center gap-4 text-yellow-400">
+                   <Clock size={32} />
+                   <div>
+                      <h3 className="font-bold text-lg">Verification Pending</h3>
+                      <p className="text-slate-400 text-sm">We are reviewing your document. This usually takes 24 hours.</p>
+                   </div>
+                </div>
+             )}
+
+             {/* Status: None/Rejected */}
+             {(!tutorData?.verification_status || tutorData?.verification_status === 'none' || tutorData?.verification_status === 'rejected') && (
+                <div>
+                   <div className="flex items-center gap-2 mb-4">
+                      <ShieldCheck className="text-blue-500" size={24} />
+                      <h3 className="font-bold text-xl text-white">Get Verified</h3>
+                   </div>
+                   <p className="text-slate-300 text-sm mb-4">
+                      Upload your <strong>Academic Transcript</strong> to get a Blue Badge. <br/>
+                      <span className="text-slate-500 text-xs">
+                        (Safety Note: Feel free to blur other marks. 
+                        We only need to see your Name, University Letter Head, and the Subject mark you teach, and please do not try any inappropriate documents as it may lead to account suspension.)
+                      </span>
+                   </p>
+                   
+                   <label className={`cursor-pointer bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-6 rounded-xl flex items-center gap-2 w-fit transition ${uploadingFile ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                      {uploadingFile ? <Clock className="animate-spin" size={20} /> : <Upload size={20} />}
+                      {uploadingFile ? 'Uploading...' : 'Upload Transcript (Image/PDF)'}
+                      <input 
+                        type="file" 
+                        accept="image/*,.pdf" 
+                        className="hidden" 
+                        onChange={handleTranscriptUpload}
+                        disabled={uploadingFile}
+                      />
+                   </label>
+                </div>
+             )}
+          </div>
+        )}
+
         <div className="mb-10">
             {profile?.is_tutor ? (
                 <div className="flex gap-4">
-                  <button onClick={handleUploadClick} className="w-full md:w-auto bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 px-8 rounded-xl flex items-center justify-center gap-2 transition">
-                    <PlusCircle size={20} /> Upload New Lesson
+                  <button onClick={handleUploadClick} className="w-full md:w-auto bg-slate-700 hover:bg-slate-600 text-white font-bold py-4 px-8 rounded-xl flex items-center justify-center gap-2 transition">
+                    <PlusCircle size={20} /> Upload Lesson
                   </button>
                   <button onClick={() => router.push('/dashboard/edit-profile')} className="bg-slate-700 hover:bg-slate-600 text-white font-bold py-4 px-8 rounded-xl flex items-center justify-center gap-2 transition">
                     <User size={20} /> Edit Profile
@@ -288,7 +382,7 @@ export default function Dashboard() {
                                    <Video size={16} /> JOIN CALL
                                 </a>
                                 
-                                {/* FIX IS HERE: Only show COPY button if NOT tutor AND guests exist */}
+                                {/* COPY LINK (Only for Students) */}
                                 {!profile?.is_tutor && booking.guest_emails && (
                                   <button 
                                     onClick={() => copyToClipboard(ensureProtocol(booking.meeting_link))} 
