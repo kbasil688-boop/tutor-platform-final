@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { useRouter } from 'next/navigation';
-import { Save, ArrowLeft, Loader2, Languages } from 'lucide-react';
+import { Save, ArrowLeft, Loader2, Languages, Linkedin } from 'lucide-react'; // Added Linkedin
 
 export default function EditProfilePage() {
   const router = useRouter();
@@ -15,7 +15,8 @@ export default function EditProfilePage() {
   const [subject, setSubject] = useState('');
   const [price, setPrice] = useState('');
   const [bio, setBio] = useState('');
-  const [languageStr, setLanguageStr] = useState(''); // NEW: Languages
+  const [languageStr, setLanguageStr] = useState(''); 
+  const [linkedin, setLinkedin] = useState(''); // NEW: LinkedIn
   const [questions, setQuestions] = useState<any[]>([]);
 
   // 1. Fetch Current Data
@@ -38,7 +39,8 @@ export default function EditProfilePage() {
         setSubject(tutor.subject);
         setPrice(tutor.price_per_hour);
         setBio(tutor.bio || '');
-        setLanguageStr(tutor.languages || ''); // Load existing languages
+        setLanguageStr(tutor.languages || ''); 
+        setLinkedin(tutor.linkedin_link || ''); // Load LinkedIn
         setQuestions(Array.isArray(tutor.custom_questions) ? tutor.custom_questions : []);
       }
       setLoading(false);
@@ -64,7 +66,8 @@ export default function EditProfilePage() {
         subject: subject,
         price_per_hour: parseInt(price),
         bio: bio,
-        languages: languageStr, // Save Languages
+        languages: languageStr,
+        linkedin_link: linkedin, // Save LinkedIn
         custom_questions: questions
       })
       .eq('id', tutorId);
@@ -114,7 +117,7 @@ export default function EditProfilePage() {
             </div>
           </div>
 
-          {/* NEW: LANGUAGE INPUT */}
+          {/* LANGUAGES */}
           <div>
             <label className="block text-slate-400 text-xs uppercase font-bold mb-2 flex items-center gap-1">
                 <Languages size={14}/> Languages (Comma separated)
@@ -125,6 +128,20 @@ export default function EditProfilePage() {
                 placeholder="English, Zulu, Xhosa"
                 value={languageStr}
                 onChange={(e) => setLanguageStr(e.target.value)}
+            />
+          </div>
+
+          {/* LINKEDIN (NEW) */}
+          <div>
+            <label className="block text-slate-400 text-xs uppercase font-bold mb-2 flex items-center gap-1">
+                <Linkedin size={14}/> LinkedIn Profile Link
+            </label>
+            <input 
+                type="text" 
+                className="w-full bg-slate-800 border border-slate-600 rounded-lg p-3 text-white focus:border-yellow-400 outline-none"
+                placeholder="https://linkedin.com/in/yourname"
+                value={linkedin}
+                onChange={(e) => setLinkedin(e.target.value)}
             />
           </div>
 

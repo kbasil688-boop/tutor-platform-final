@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Search, Filter, Star, Clock, Zap, Calendar, ArrowLeft, X, Video, User, RotateCcw, ExternalLink, MessageSquare, Languages, ShieldCheck, GraduationCap } from 'lucide-react';
+import { Search, Filter, Star, Clock, Zap, Calendar, ArrowLeft, X, Video, User, RotateCcw, ExternalLink, MessageSquare, Languages, ShieldCheck, GraduationCap, Linkedin } from 'lucide-react'; // Added Linkedin
 import Link from 'next/link';
 import { supabase } from '../lib/supabaseClient';
 import { useRouter } from 'next/navigation';
@@ -98,6 +98,15 @@ export default function FindTutorPage() {
     tutor.profiles?.full_name?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const ensureProtocol = (url: string) => {
+    if (!url) return '#';
+    let cleanUrl = url.trim();
+    if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
+      return `https://${cleanUrl}`;
+    }
+    return cleanUrl;
+  };
+
   return (
     <div className="min-h-screen bg-slate-900 text-white font-sans relative">
       
@@ -111,7 +120,7 @@ export default function FindTutorPage() {
               <GraduationCap className="text-yellow-400 group-hover:rotate-12 transition duration-300" size={24} />
             </div>
             <h1 className="text-xl font-extrabold tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-orange-500">
-              TUTOR<span className="text-white">HUB</span>
+              Tut<span className="text-white">Buddy</span>
             </h1>
           </Link>
           
@@ -225,7 +234,21 @@ export default function FindTutorPage() {
                         {profileTutor.profiles?.full_name}
                         {profileTutor.verification_status === 'verified' && <ShieldCheck size={24} className="text-blue-400" fill="currentColor" stroke="black" />}
                     </h2>
+                    
                     <p className="text-blue-400 font-bold text-lg">{profileTutor.subject}</p>
+                    
+                    {/* LINKEDIN BUTTON (NEW) */}
+                    {profileTutor.linkedin_link && (
+                        <a 
+                          href={ensureProtocol(profileTutor.linkedin_link)} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 mt-1 text-xs text-blue-300 hover:text-white transition bg-blue-900/30 px-2 py-1 rounded"
+                        >
+                            <Linkedin size={12} /> LinkedIn Profile
+                        </a>
+                    )}
+
                     <div className="flex items-center gap-2 mt-2">
                        <span className="bg-yellow-400/20 text-yellow-400 px-2 py-1 rounded text-xs font-bold flex items-center gap-1"><Star size={12}/> {profileTutor.rating} Rating</span>
                        <span className="bg-slate-700 text-slate-300 px-2 py-1 rounded text-xs">R{profileTutor.price_per_hour}/hr</span>
@@ -309,7 +332,7 @@ export default function FindTutorPage() {
 
             <div className="space-y-4">
               
-              {/* TOPIC INPUT */}
+              {/* NEW: TOPIC DESCRIPTION INPUT */}
               <div className="bg-slate-900 border border-slate-700 p-4 rounded-xl">
                  <label className="block text-xs font-bold text-slate-400 mb-2 uppercase">What are you struggling with?</label>
                  <textarea 
@@ -320,7 +343,6 @@ export default function FindTutorPage() {
                  />
               </div>
 
-              {/* GROUP INPUT */}
               <div className="bg-slate-900 border border-slate-700 p-4 rounded-xl">
                  <label className="block text-xs font-bold text-slate-400 mb-2 uppercase">Group Session? (Max 4)</label>
                  <input 
@@ -332,7 +354,6 @@ export default function FindTutorPage() {
                  />
               </div>
 
-              {/* Live Request */}
               <button 
                 onClick={() => handleBooking('live')}
                 disabled={!bookingTutor.is_online}
@@ -357,7 +378,6 @@ export default function FindTutorPage() {
                 </div>
               </button>
 
-              {/* Schedule */}
               <div className="bg-slate-900 border border-slate-700 p-4 rounded-xl">
                  <div className="flex items-center gap-3 mb-3">
                     <div className="p-2 rounded-full bg-blue-600 text-white"><Calendar size={20} /></div>

@@ -30,7 +30,7 @@ export default function Home() {
                 <GraduationCap className="text-yellow-400 group-hover:rotate-12 transition duration-300" size={28} />
               </div>
               <h1 className="text-2xl font-extrabold tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-orange-500">
-                TUTOR<span className="text-white">HUB</span>
+                Tut<span className="text-white">Buddy</span>
               </h1>
             </Link>
             
@@ -150,7 +150,7 @@ export default function Home() {
               <h2 className="text-3xl md:text-5xl font-black">Built for Students, <br/> <span className="text-blue-500">By Students.</span></h2>
               <p className="text-slate-400 text-lg leading-relaxed">
                 We know the struggle of late-night cramming. We know the panic of a looming deadline. 
-                TutorHub isn't just a website; it's a community where seniors help juniors succeed.
+                TutBuddy isn't just a website; it's a community where seniors help juniors succeed.
               </p>
               <ul className="space-y-3">
                 <li className="flex items-center gap-3 text-slate-300"><CheckCircle className="text-green-500" size={20}/> Tutors from your own University and neighbouring universities</li>
@@ -212,7 +212,7 @@ export default function Home() {
            
         </div>
         <p className="text-slate-500 text-xs md:text-sm">
-          © {new Date().getFullYear()} TutorHub. All Rights Reserved.
+          © {new Date().getFullYear()} TutBuddy. All Rights Reserved.
         </p>
         <p className="text-slate-400 font-bold mt-2 text-sm">
           Created by <span className="text-yellow-400">Chulumanco Basil Zono</span> and <span className="text-blue-400">Luvo Jindela</span>

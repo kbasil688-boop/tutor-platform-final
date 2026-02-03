@@ -139,7 +139,7 @@ export default function AuthPage() {
            <p className="text-slate-300 mb-8 leading-relaxed">
              We have sent a verification link to <span className="text-white font-bold">{email}</span>.
              <br/><br/>
-             Please click the link to activate your account and start your journey with TutorHub!
+             Please click the link to activate your account and start your journey with TutBuddy
            </p>
           
         </div>
@@ -152,7 +152,7 @@ export default function AuthPage() {
     <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4 py-10">
       <div className="bg-slate-800 border border-slate-700 p-8 rounded-2xl w-full max-w-md shadow-2xl">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-extrabold text-white mb-2">{isSignUp ? 'Join TutorHub' : 'Welcome Back'}</h1>
+          <h1 className="text-3xl font-extrabold text-white mb-2">{isSignUp ? 'Join TutBuddy' : 'Welcome Back'}</h1>
           <p className="text-slate-400">{isSignUp ? 'Create your profile.' : 'Login to your account.'}</p>
         </div>
 

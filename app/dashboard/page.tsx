@@ -102,13 +102,17 @@ export default function Dashboard() {
   // --- ACTIONS ---
 
   // 1. TRANSCRIPT UPLOAD
+  // 1. TRANSCRIPT UPLOAD (Improved Naming)
   const handleTranscriptUpload = async (event: any) => {
     const file = event.target.files[0];
     if (!file) return;
 
     setUploadingFile(true);
     const fileExt = file.name.split('.').pop();
-    const fileName = `${tutorData.id}-transcript.${fileExt}`;
+    
+    // FIX: Include Name + ID so Admin knows who it is
+    const cleanName = profile.full_name.replace(/[^a-zA-Z0-9]/g, '_'); // Replaces spaces/symbols with _
+    const fileName = `${cleanName}-${tutorData.id}-transcript.${fileExt}`;
     const filePath = `${fileName}`;
 
     // Upload to Supabase Storage
@@ -219,7 +223,7 @@ export default function Dashboard() {
               <GraduationCap className="text-yellow-400 group-hover:rotate-12 transition duration-300" size={24} />
             </div>
             <h1 className="text-xl font-extrabold tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-orange-500">
-              TUTOR<span className="text-white">HUB</span>
+              Tut<span className="text-white">Buddy</span>
             </h1>
           </div>
         </Link>
