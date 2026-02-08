@@ -4,15 +4,29 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { User, Calendar, DollarSign, Video, LogOut, Zap, Bell, Clock, Check, X as XIcon, Search, PlusCircle, Trash2, AlertCircle, GraduationCap, Copy, Users, ShieldCheck, Upload } from 'lucide-react';
+import { User, Calendar, DollarSign, Video, LogOut, Zap, Bell, Clock, Check, X as XIcon, Search, PlusCircle, Trash2, AlertCircle, GraduationCap, Copy, Users, ShieldCheck, Upload, Banknote } from 'lucide-react';
 
 export default function Dashboard() {
   const [profile, setProfile] = useState<any>(null);
   const [tutorData, setTutorData] = useState<any>(null);
   const [bookings, setBookings] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [uploadingFile, setUploadingFile] = useState(false); // For Transcript
+  const [uploadingFile, setUploadingFile] = useState(false);
   const router = useRouter();
+
+  // --- PAYSTACK STATE ---
+  const [bankName, setBankName] = useState('Capitec Bank');
+  const [accNumber, setAccNumber] = useState('');
+  const [settingUpBank, setSettingUpBank] = useState(false);
+
+  const BANKS = [
+    { name: 'Capitec Bank', code: '470010' },
+    { name: 'FNB', code: '250655' },
+    { name: 'Standard Bank', code: '051001' },
+    { name: 'Absa', code: '632005' },
+    { name: 'Nedbank', code: '198765' },
+    { name: 'TymeBank', code: '678910' }
+  ];
 
   const ensureProtocol = (url: string) => {
     if (!url) return '#';
@@ -77,9 +91,7 @@ export default function Dashboard() {
     // FILTER LOGIC
     const now = new Date();
     const cleanBookings = fetchedBookings.filter((b: any) => {
-      // Hide rejected bookings for Tutor, keep for Student
       if (profileData?.is_tutor && b.status === 'rejected') return false; 
-      
       if (b.status === 'pending') {
          const bookingTime = new Date(b.scheduled_time || b.created_at);
          const expiryTime = b.booking_type === 'live' 
@@ -101,21 +113,55 @@ export default function Dashboard() {
 
   // --- ACTIONS ---
 
-  // 1. TRANSCRIPT UPLOAD
-  // 1. TRANSCRIPT UPLOAD (Improved Naming)
+  // 1. PAYSTACK BANK SETUP
+  const handleBankSetup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSettingUpBank(true);
+
+    const selectedBank = BANKS.find(b => b.name === bankName);
+    
+    try {
+        const res = await fetch('/api/paystack/create-subaccount', {
+            method: 'POST',
+            body: JSON.stringify({
+                business_name: profile.full_name,
+                bank_code: selectedBank?.code,
+                account_number: accNumber
+            })
+        });
+
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+
+        // Save Code to Supabase
+        await supabase.from('tutors').update({
+            payment_subaccount_code: data.subaccount_code,
+            bank_name: bankName,
+            account_number: accNumber,
+            payouts_enabled: true
+        }).eq('id', tutorData.id);
+
+        alert("Bank Details Saved! You can now receive payments.");
+        refreshData();
+
+    } catch (err: any) {
+        alert("Bank Setup Failed: " + err.message);
+    } finally {
+        setSettingUpBank(false);
+    }
+  };
+
+  // 2. TRANSCRIPT UPLOAD
   const handleTranscriptUpload = async (event: any) => {
     const file = event.target.files[0];
     if (!file) return;
 
     setUploadingFile(true);
     const fileExt = file.name.split('.').pop();
-    
-    // FIX: Include Name + ID so Admin knows who it is
-    const cleanName = profile.full_name.replace(/[^a-zA-Z0-9]/g, '_'); // Replaces spaces/symbols with _
+    const cleanName = profile.full_name.replace(/[^a-zA-Z0-9]/g, '_'); 
     const fileName = `${cleanName}-${tutorData.id}-transcript.${fileExt}`;
     const filePath = `${fileName}`;
 
-    // Upload to Supabase Storage
     const { error: uploadError } = await supabase.storage
       .from('transcripts')
       .upload(filePath, file, { upsert: true });
@@ -126,7 +172,6 @@ export default function Dashboard() {
       return;
     }
 
-    // Update Status
     const { error: dbError } = await supabase
       .from('tutors')
       .update({ verification_status: 'pending' })
@@ -149,7 +194,7 @@ export default function Dashboard() {
     if (error) alert("Status update failed: " + error.message);
   };
 
-  const handleBookingAction = async (bookingId: number, action: 'confirmed' | 'rejected') => {
+  const handleBookingAction = async (booking: any, action: 'confirmed' | 'rejected') => {
     let link = null;
     let reason = null;
 
@@ -160,19 +205,59 @@ export default function Dashboard() {
     } 
     
     if (action === 'rejected') {
-      if (!confirm("Are you sure you want to reject this request?")) return;
-      reason = "Tutor is currently unavailable.";
+      if (!confirm("Are you sure? This will refund the student.")) return;
+      reason = "Tutor unavailable.";
+      
+      // --- NEW: AUTOMATIC REFUND ON REJECTION ---
+      if (booking.payment_status === 'paid' && booking.payment_intent_id) {
+          try {
+             await fetch('/api/paystack/refund', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ reference: booking.payment_intent_id })
+             });
+             alert("Student has been refunded automatically.");
+          } catch (err) {
+             console.error("Refund failed", err);
+          }
+      }
     }
 
-    await supabase.from('bookings').update({ status: action, meeting_link: link, rejection_reason: reason }).eq('id', bookingId);
+    await supabase.from('bookings').update({ status: action, meeting_link: link, rejection_reason: reason }).eq('id', booking.id);
     refreshData();
   };
 
-  const handleCancelBooking = async (bookingId: number) => {
-    if (confirm("Remove this booking?")) {
-      await supabase.from('bookings').delete().eq('id', bookingId);
-      refreshData();
+ const handleCancelBooking = async (booking: any) => {
+    if (!confirm("Are you sure? This will cancel the session and initiate a refund.")) return;
+
+    // 1. If it was a paid booking, try to refund via Paystack
+    if (booking.payment_status === 'paid' && booking.payment_intent_id) {
+        alert("Processing refund... this may take a moment.");
+        
+        try {
+            const res = await fetch('/api/paystack/refund', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ reference: booking.payment_intent_id })
+            });
+            
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error);
+            
+            alert("Refund initiated! Funds will return to your account in 5-10 days.");
+        } catch (err: any) {
+            alert("Refund failed automatically: " + err.message + ". Please contact support.");
+            return; // Stop here if refund fails, so we don't cancel the booking yet
+        }
     }
+
+    // 2. Mark as Cancelled in Database (Don't delete, keep for records)
+    await supabase
+        .from('bookings')
+        .update({ status: 'cancelled', payment_status: 'refunded' })
+        .eq('id', booking.id);
+        
+    refreshData();
   };
 
   const handleUploadClick = () => {
@@ -255,7 +340,43 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* --- VERIFICATION SECTION (TUTORS ONLY) --- */}
+        {/* --- PAYSTACK BANK DETAILS FORM (TUTORS ONLY) --- */}
+        {profile?.is_tutor && !tutorData?.payouts_enabled && (
+           <div className="mb-6 bg-slate-800 border border-slate-700 p-6 rounded-2xl">
+             <div className="flex items-center gap-2 mb-4 text-white">
+                <Banknote className="text-green-400" />
+                <h3 className="font-bold text-lg">Add Bank Details (To Receive Payments)</h3>
+             </div>
+             <form onSubmit={handleBankSetup} className="flex flex-col md:flex-row gap-4 items-end">
+                <div className="w-full">
+                    <label className="text-xs text-slate-400 font-bold uppercase mb-1 block">Bank Name</label>
+                    <select 
+                        className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-green-500 outline-none"
+                        value={bankName}
+                        onChange={(e) => setBankName(e.target.value)}
+                    >
+                        {BANKS.map(b => <option key={b.code} value={b.name}>{b.name}</option>)}
+                    </select>
+                </div>
+                <div className="w-full">
+                    <label className="text-xs text-slate-400 font-bold uppercase mb-1 block">Account Number</label>
+                    <input 
+                        type="text" 
+                        className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-green-500 outline-none"
+                        placeholder="1234567890"
+                        value={accNumber}
+                        onChange={(e) => setAccNumber(e.target.value)}
+                        required
+                    />
+                </div>
+                <button disabled={settingUpBank} className="bg-green-600 hover:bg-green-500 text-white font-bold py-3 px-6 rounded-xl w-full md:w-auto">
+                    {settingUpBank ? 'Saving...' : 'Save Bank'}
+                </button>
+             </form>
+           </div>
+        )}
+
+        {/* --- VERIFICATION SECTION (TUTORS) --- */}
         {profile?.is_tutor && (
           <div className="mb-10 bg-slate-800 p-6 rounded-2xl border border-slate-700 relative overflow-hidden">
              
@@ -291,8 +412,8 @@ export default function Dashboard() {
                    <p className="text-slate-300 text-sm mb-4">
                       Upload your <strong>Academic Transcript</strong> to get a Blue Badge. <br/>
                       <span className="text-slate-500 text-xs">
-                        (Safety Note: Feel free to blur other marks. 
-                        We only need to see your Name, University Letter Head, and the Subject mark you teach, and please do not try any inappropriate documents as it may lead to account suspension.)
+                        (Safety Note: Feel free to crop the image or blur other marks. 
+                        We only need to see your Name, University, and the Subject mark you teach.)
                       </span>
                    </p>
                    
@@ -412,8 +533,8 @@ export default function Dashboard() {
                         </div>
                      )}
                      {!profile?.is_tutor && (
-                        <button onClick={() => handleCancelBooking(booking.id)} className="bg-slate-700 hover:bg-red-600 text-slate-300 hover:text-white p-2 rounded-lg transition" title="Remove Booking">
-                           <Trash2 size={20} />
+                        <button onClick={() => handleCancelBooking(booking)} className="bg-slate-700 hover:bg-red-600 text-slate-300 hover:text-white p-2 rounded-lg transition" title="Cancel & Refund">
+                          <Trash2 size={20} />
                         </button>
                      )}
                    </div>

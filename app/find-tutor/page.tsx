@@ -1,10 +1,11 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Search, Filter, Star, Clock, Zap, Calendar, ArrowLeft, X, Video, User, RotateCcw, ExternalLink, MessageSquare, Languages, ShieldCheck, GraduationCap, Linkedin } from 'lucide-react'; // Added Linkedin
+import { Search, Star, Clock, Zap, Calendar, ArrowLeft, X, Video, User, RotateCcw, ExternalLink, MessageSquare, Languages, ShieldCheck, GraduationCap } from 'lucide-react';
 import Link from 'next/link';
 import { supabase } from '../lib/supabaseClient';
 import { useRouter } from 'next/navigation';
+import { usePaystackPayment } from 'react-paystack'; // 1. Import Paystack
 
 export default function FindTutorPage() {
   const [guestEmails, setGuestEmails] = useState("");
@@ -17,17 +18,18 @@ export default function FindTutorPage() {
   const [bookingTutor, setBookingTutor] = useState<any>(null);
   const [profileTutor, setProfileTutor] = useState<any>(null);
   const [tutorLessons, setTutorLessons] = useState<any[]>([]);
-  
   const [scheduleDate, setScheduleDate] = useState("");
+
+  // Payment State
+  const [pendingBookingType, setPendingBookingType] = useState<'live' | 'scheduled' | null>(null);
+  const [userEmail, setUserEmail] = useState("student@tutorhub.co.za");
+
   const router = useRouter();
 
   // 1. Fetch Tutors
   const fetchTutors = async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from('tutors')
-      .select('*, profiles(full_name, avatar_url)');
-    
+    const { data, error } = await supabase.from('tutors').select('*, profiles(full_name, avatar_url)');
     if (error) console.error(error);
     else setTutors(data || []);
     setLoading(false);
@@ -35,20 +37,68 @@ export default function FindTutorPage() {
 
   useEffect(() => {
     fetchTutors();
+    // Get current user email for payment receipt
+    supabase.auth.getUser().then(({data}) => {
+       if(data.user?.email) setUserEmail(data.user.email);
+    });
   }, []);
 
-  // 2. Fetch Lessons for Profile View
   const handleViewProfile = async (tutor: any) => {
     setProfileTutor(tutor);
-    const { data } = await supabase
-      .from('lessons')
-      .select('*')
-      .eq('tutor_id', tutor.user_id);
+    const { data } = await supabase.from('lessons').select('*').eq('tutor_id', tutor.user_id);
     setTutorLessons(data || []);
   };
 
-  // 3. Booking Logic
-  const handleBooking = async (type: 'live' | 'scheduled') => {
+  // --- 2. PAYSTACK CONFIGURATION ---
+  const config = {
+    reference: (new Date()).getTime().toString(),
+    email: userEmail,
+    amount: 15000, // R150.00 (in cents)
+    currency: 'ZAR',
+    publicKey: process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY || '', 
+  };
+
+  // Initialize Hook
+  const initializePayment = usePaystackPayment(config);
+
+  // --- 3. PAYMENT SUCCESS HANDLER ---
+  const onPaymentSuccess = async (reference: any) => {
+    // Only run this IF payment worked
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { error } = await supabase.from('bookings').insert([
+        { 
+          student_id: user.id, 
+          tutor_id: bookingTutor.id,
+          status: 'pending', // Starts pending, Tutor must accept
+          booking_type: pendingBookingType,
+          scheduled_time: pendingBookingType === 'live' ? new Date().toISOString() : new Date(scheduleDate).toISOString(),
+          guest_emails: guestEmails,
+          topic_description: topicDescription,
+          payment_status: 'paid', // Mark as Paid
+          payment_intent_id: reference.reference // Save Paystack Ref
+        }
+      ]);
+
+    if (error) {
+      alert("Payment successful but Database error: " + error.message);
+    } else {
+      alert(pendingBookingType === 'live' ? "⚡ Payment Complete! Request Sent." : "📅 Payment Complete! Session Scheduled.");
+      setBookingTutor(null);
+      setGuestEmails(""); 
+      setTopicDescription("");
+      router.push('/dashboard');
+    }
+  };
+
+  const onPaymentClose = () => {
+    console.log("Payment closed by user");
+  };
+
+  // --- 4. TRIGGER PAYMENT ---
+  // --- 4. TRIGGER PAYMENT ---
+  const triggerBookingFlow = async (type: 'live' | 'scheduled') => {
     const { data: { user } } = await supabase.auth.getUser();
 
     if (!user) {
@@ -57,55 +107,28 @@ export default function FindTutorPage() {
       return;
     }
 
-    if (type === 'scheduled' && !scheduleDate) {
-      alert("Please select a date and time!");
-      return;
-    }
-
-    // CHECK: Ensure they typed a topic
+    // RULE 1: Topic is ALWAYS required
     if (!topicDescription.trim()) {
       alert("Please tell the tutor what you are struggling with!");
       return;
     }
 
-    const { error } = await supabase
-      .from('bookings')
-      .insert([
-        { 
-          student_id: user.id, 
-          tutor_id: bookingTutor.id,
-          status: 'pending',
-          booking_type: type,
-          scheduled_time: type === 'live' ? new Date().toISOString() : new Date(scheduleDate).toISOString(),
-          guest_emails: guestEmails,
-          topic_description: topicDescription
-        }
-      ]);
-
-    if (error) {
-      alert("Booking failed: " + error.message);
-    } else {
-      alert(type === 'live' ? "⚡ Live Request Sent! Wait for tutor." : "📅 Session Scheduled!");
-      setBookingTutor(null);
-      setGuestEmails(""); 
-      setTopicDescription("");
-      router.push('/dashboard');
+    // RULE 2: Time is required ONLY for Scheduled sessions
+    if (type === 'scheduled' && !scheduleDate) {
+      alert("Please select a date and time for the session!");
+      return;
     }
+
+    // If validations pass, open Paystack
+    setPendingBookingType(type);
+    initializePayment({ onSuccess: onPaymentSuccess, onClose: onPaymentClose });
   };
+
 
   const filteredTutors = tutors.filter(tutor => 
     tutor.subject.toLowerCase().includes(searchTerm.toLowerCase()) ||
     tutor.profiles?.full_name?.toLowerCase().includes(searchTerm.toLowerCase())
   );
-
-  const ensureProtocol = (url: string) => {
-    if (!url) return '#';
-    let cleanUrl = url.trim();
-    if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
-      return `https://${cleanUrl}`;
-    }
-    return cleanUrl;
-  };
 
   return (
     <div className="min-h-screen bg-slate-900 text-white font-sans relative">
@@ -113,8 +136,6 @@ export default function FindTutorPage() {
       {/* Header */}
       <header className="sticky top-0 z-10 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 p-4">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row gap-4 items-center justify-between">
-          
-          {/* LOGO SECTION */}
           <Link href="/" className="flex items-center gap-2 group cursor-pointer">
             <div className="bg-yellow-400/10 p-2 rounded-lg border border-yellow-400/20 group-hover:border-yellow-400/50 transition">
               <GraduationCap className="text-yellow-400 group-hover:rotate-12 transition duration-300" size={24} />
@@ -153,7 +174,6 @@ export default function FindTutorPage() {
             {filteredTutors.map((tutor) => (
               <div key={tutor.id} className="bg-slate-800 rounded-2xl p-6 border border-slate-700 hover:border-blue-500/30 transition group relative">
                 
-                {/* Online Badge */}
                 {tutor.is_online && (
                   <div className="absolute top-4 right-4 bg-green-500/20 text-green-400 text-xs font-bold px-2 py-1 rounded-full flex items-center gap-1 border border-green-500/30 animate-pulse">
                     <span className="w-2 h-2 bg-green-400 rounded-full"></span> LIVE
@@ -167,7 +187,6 @@ export default function FindTutorPage() {
                   <div>
                     <h3 className="text-xl font-bold flex items-center gap-2">
                        {tutor.profiles?.full_name || "Tutor"}
-                       {/* VERIFIED BADGE */}
                        {tutor.verification_status === 'verified' && (
                           <ShieldCheck size={18} className="text-blue-400" fill="currentColor" stroke="black" />
                        )}
@@ -224,7 +243,6 @@ export default function FindTutorPage() {
             <button onClick={() => setProfileTutor(null)} className="absolute top-4 right-4 text-slate-400 hover:text-white p-2 bg-slate-900 rounded-full"><X size={24} /></button>
             
             <div className="p-8">
-              {/* Profile Header */}
               <div className="flex items-center gap-6 mb-8 border-b border-slate-700 pb-8">
                  <div className="w-24 h-24 rounded-full bg-slate-700 flex items-center justify-center text-4xl font-bold border-4 border-slate-600">
                     {profileTutor.profiles?.full_name?.[0]}
@@ -234,18 +252,11 @@ export default function FindTutorPage() {
                         {profileTutor.profiles?.full_name}
                         {profileTutor.verification_status === 'verified' && <ShieldCheck size={24} className="text-blue-400" fill="currentColor" stroke="black" />}
                     </h2>
-                    
                     <p className="text-blue-400 font-bold text-lg">{profileTutor.subject}</p>
                     
-                    {/* LINKEDIN BUTTON (NEW) */}
                     {profileTutor.linkedin_link && (
-                        <a 
-                          href={ensureProtocol(profileTutor.linkedin_link)} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 mt-1 text-xs text-blue-300 hover:text-white transition bg-blue-900/30 px-2 py-1 rounded"
-                        >
-                            <Linkedin size={12} /> LinkedIn Profile
+                        <a href={profileTutor.linkedin_link} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 mt-1 text-xs text-blue-300 hover:text-white transition bg-blue-900/30 px-2 py-1 rounded">
+                            <ExternalLink size={12} /> LinkedIn Profile
                         </a>
                     )}
 
@@ -256,7 +267,6 @@ export default function FindTutorPage() {
                  </div>
               </div>
 
-              {/* --- LANGUAGES BADGE --- */}
               {profileTutor.languages && (
                  <div className="mb-8">
                     <h3 className="text-slate-400 text-xs font-bold uppercase mb-3 flex items-center gap-2">
@@ -272,7 +282,6 @@ export default function FindTutorPage() {
                  </div>
               )}
 
-              {/* --- RICH PROFILE ANSWERS --- */}
               <div className="mb-8 space-y-4">
                  <h3 className="text-slate-400 text-xs font-bold uppercase mb-2 flex items-center gap-2">
                     <MessageSquare size={14}/> About {profileTutor.profiles?.full_name?.split(' ')[0]}
@@ -292,7 +301,6 @@ export default function FindTutorPage() {
                  )}
               </div>
 
-              {/* Lessons List */}
               <h3 className="text-xl font-bold mb-4 flex items-center gap-2 border-t border-slate-700 pt-6">
                 <Video className="text-yellow-400" /> Recorded Lessons
               </h3>
@@ -309,7 +317,7 @@ export default function FindTutorPage() {
                          </div>
                          <a href={lesson.video_url} target="_blank" rel="noopener noreferrer">
                             <button className="text-xs bg-slate-800 text-white px-3 py-1.5 rounded-lg hover:bg-red-600 transition flex items-center gap-1">
-                               <ExternalLink size={12} /> Watch on YouTube
+                               <ExternalLink size={12} /> Watch
                             </button>
                          </a>
                       </div>
@@ -321,18 +329,18 @@ export default function FindTutorPage() {
         </div>
       )}
 
-      {/* --- BOOKING MODAL --- */}
+      {/* --- BOOKING & PAYMENT MODAL --- */}
       {bookingTutor && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-800 w-full max-w-md rounded-3xl p-6 border border-slate-700 relative shadow-2xl">
+          <div className="bg-slate-800 w-[95%] md:w-full max-w-md rounded-3xl p-6 border border-slate-700 relative shadow-2xl">
             <button onClick={() => setBookingTutor(null)} className="absolute top-4 right-4 text-slate-400 hover:text-white"><X size={24} /></button>
 
             <h2 className="text-2xl font-bold mb-1">Book {bookingTutor.profiles.full_name}</h2>
             <p className="text-slate-400 text-sm mb-6">Subject: {bookingTutor.subject}</p>
+            <p className="text-yellow-400 font-bold mb-4">Price: R150.00 / session</p>
 
             <div className="space-y-4">
               
-              {/* NEW: TOPIC DESCRIPTION INPUT */}
               <div className="bg-slate-900 border border-slate-700 p-4 rounded-xl">
                  <label className="block text-xs font-bold text-slate-400 mb-2 uppercase">What are you struggling with?</label>
                  <textarea 
@@ -354,8 +362,9 @@ export default function FindTutorPage() {
                  />
               </div>
 
+              {/* PAYMENT TRIGGER BUTTONS */}
               <button 
-                onClick={() => handleBooking('live')}
+                onClick={() => triggerBookingFlow('live')}
                 disabled={!bookingTutor.is_online}
                 className={`w-full p-4 rounded-xl border flex items-center justify-between transition
                   ${bookingTutor.is_online 
@@ -369,10 +378,10 @@ export default function FindTutorPage() {
                   </div>
                   <div>
                     <span className={`block font-bold ${bookingTutor.is_online ? 'text-white' : 'text-slate-500'}`}>
-                      {bookingTutor.is_online ? "Request Live Session" : "Tutor is OFFLINE"}
+                      {bookingTutor.is_online ? "Request Live (Pay R150)" : "Tutor is OFFLINE"}
                     </span>
                     <span className="text-xs text-slate-400">
-                      {bookingTutor.is_online ? "Tutor is ready!" : "Cannot book live right now"}
+                      {bookingTutor.is_online ? "Instant Booking" : "Cannot book live right now"}
                     </span>
                   </div>
                 </div>
@@ -381,10 +390,10 @@ export default function FindTutorPage() {
               <div className="bg-slate-900 border border-slate-700 p-4 rounded-xl">
                  <div className="flex items-center gap-3 mb-3">
                     <div className="p-2 rounded-full bg-blue-600 text-white"><Calendar size={20} /></div>
-                    <span className="font-bold">Schedule for Later</span>
+                    <span className="font-bold">Schedule for Later (Pay R150)</span>
                  </div>
                  <input type="datetime-local" className="w-full bg-slate-800 border border-slate-600 rounded-lg p-2 text-white text-sm mb-3" onChange={(e) => setScheduleDate(e.target.value)} />
-                 <button onClick={() => handleBooking('scheduled')} className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded-lg text-sm transition">Confirm Schedule</button>
+                 <button onClick={() => triggerBookingFlow('scheduled')} className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded-lg text-sm transition">Confirm & Pay</button>
               </div>
             </div>
           </div>

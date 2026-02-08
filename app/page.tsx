@@ -130,7 +130,7 @@ export default function Home() {
             <FeatureCard 
               icon={<Users className="text-cyan-400" size={28} />}
               title="1-on-1 Sessions"
-              desc="Book a tutor instantly like an Uber. Live video calls to solve your problems."
+              desc="Book a tutor instantly on-demand. Live video calls to solve your problems."
               color="hover:border-cyan-400/50"
             />
             <FeatureCard 
