@@ -5,9 +5,11 @@ import { Search, Star, Clock, Zap, Calendar, ArrowLeft, X, Video, User, RotateCc
 import Link from 'next/link';
 import { supabase } from '../lib/supabaseClient';
 import { useRouter } from 'next/navigation';
-import { usePaystackPayment } from 'react-paystack'; // 1. Import Paystack
+import { usePaystackPayment } from 'react-paystack';
+import dynamic from 'next/dynamic'; // 1. IMPORT DYNAMIC
 
-export default function FindTutorPage() {
+// 2. RENAME MAIN FUNCTION (so we can export it safely below)
+function FindTutorContent() {
   const [guestEmails, setGuestEmails] = useState("");
   const [topicDescription, setTopicDescription] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
@@ -100,7 +102,6 @@ export default function FindTutorPage() {
   };
 
   // --- 4. TRIGGER PAYMENT ---
-  // --- 4. TRIGGER PAYMENT ---
   const triggerBookingFlow = async (type: 'live' | 'scheduled') => {
     const { data: { user } } = await supabase.auth.getUser();
 
@@ -177,6 +178,7 @@ export default function FindTutorPage() {
             {filteredTutors.map((tutor) => (
               <div key={tutor.id} className="bg-slate-800 rounded-2xl p-6 border border-slate-700 hover:border-blue-500/30 transition group relative">
                 
+                {/* Online Badge */}
                 {tutor.is_online && (
                   <div className="absolute top-4 right-4 bg-green-500/20 text-green-400 text-xs font-bold px-2 py-1 rounded-full flex items-center gap-1 border border-green-500/30 animate-pulse">
                     <span className="w-2 h-2 bg-green-400 rounded-full"></span> LIVE
@@ -269,7 +271,7 @@ export default function FindTutorPage() {
                     </div>
                  </div>
               </div>
-
+              
               {profileTutor.languages && (
                  <div className="mb-8">
                     <h3 className="text-slate-400 text-xs font-bold uppercase mb-3 flex items-center gap-2">
@@ -277,9 +279,7 @@ export default function FindTutorPage() {
                     </h3>
                     <div className="flex flex-wrap gap-2">
                         {profileTutor.languages.split(',').map((lang: string, i: number) => (
-                           <span key={i} className="bg-blue-600/20 text-blue-300 px-3 py-1.5 rounded-lg text-sm font-medium border border-blue-500/30">
-                              {lang.trim()}
-                           </span>
+                           <span key={i} className="bg-blue-600/20 text-blue-300 px-3 py-1.5 rounded-lg text-sm font-medium border border-blue-500/30">{lang.trim()}</span>
                         ))}
                     </div>
                  </div>
@@ -289,7 +289,6 @@ export default function FindTutorPage() {
                  <h3 className="text-slate-400 text-xs font-bold uppercase mb-2 flex items-center gap-2">
                     <MessageSquare size={14}/> About {profileTutor.profiles?.full_name?.split(' ')[0]}
                  </h3>
-                 
                  {Array.isArray(profileTutor.custom_questions) && profileTutor.custom_questions.length > 0 ? (
                     profileTutor.custom_questions.map((item: any, idx: number) => (
                       <div key={idx} className="bg-slate-900 p-4 rounded-xl border border-slate-700">
@@ -303,11 +302,9 @@ export default function FindTutorPage() {
                     </div>
                  )}
               </div>
-
               <h3 className="text-xl font-bold mb-4 flex items-center gap-2 border-t border-slate-700 pt-6">
                 <Video className="text-yellow-400" /> Recorded Lessons
               </h3>
-              
               <div className="space-y-3">
                  {tutorLessons.length === 0 ? (
                     <p className="text-slate-500 italic">No lessons yet.</p>
@@ -332,7 +329,6 @@ export default function FindTutorPage() {
         </div>
       )}
 
-      {/* --- BOOKING & PAYMENT MODAL --- */}
       {bookingTutor && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-slate-800 w-[95%] md:w-full max-w-md rounded-3xl p-6 border border-slate-700 relative shadow-2xl">
@@ -343,49 +339,29 @@ export default function FindTutorPage() {
             <p className="text-yellow-400 font-bold mb-4">Price: R150.00 / session</p>
 
             <div className="space-y-4">
-              
               <div className="bg-slate-900 border border-slate-700 p-4 rounded-xl">
                  <label className="block text-xs font-bold text-slate-400 mb-2 uppercase">What are you struggling with?</label>
-                 <textarea 
-                   className="w-full bg-slate-800 border border-slate-600 rounded-lg p-2 text-white text-sm focus:border-blue-500 outline-none h-20"
-                   placeholder="e.g. I need help with Linear Algebra, specifically Eigenvalues..."
-                   value={topicDescription}
-                   onChange={(e) => setTopicDescription(e.target.value)}
-                 />
+                 <textarea className="w-full bg-slate-800 border border-slate-600 rounded-lg p-2 text-white text-sm focus:border-blue-500 outline-none h-20" placeholder="e.g. I need help with Linear Algebra..." value={topicDescription} onChange={(e) => setTopicDescription(e.target.value)} />
               </div>
 
               <div className="bg-slate-900 border border-slate-700 p-4 rounded-xl">
                  <label className="block text-xs font-bold text-slate-400 mb-2 uppercase">Group Session? (Max 4)</label>
-                 <input 
-                   type="text"
-                   className="w-full bg-slate-800 border border-slate-600 rounded-lg p-2 text-white text-sm focus:border-blue-500 outline-none"
-                   placeholder="Enter friends' emails (separated by comma)"
-                   value={guestEmails}
-                   onChange={(e) => setGuestEmails(e.target.value)}
-                 />
+                 <input type="text" className="w-full bg-slate-800 border border-slate-600 rounded-lg p-2 text-white text-sm focus:border-blue-500 outline-none" placeholder="Enter friends' emails..." value={guestEmails} onChange={(e) => setGuestEmails(e.target.value)} />
               </div>
 
-              {/* PAYMENT TRIGGER BUTTONS */}
+              {/* PAYMENT BUTTONS */}
               <button 
                 onClick={() => triggerBookingFlow('live')}
                 disabled={!bookingTutor.is_online}
                 className={`w-full p-4 rounded-xl border flex items-center justify-between transition
-                  ${bookingTutor.is_online 
-                    ? 'bg-green-500/10 border-green-500/50 hover:bg-green-500/20 cursor-pointer' 
-                    : 'bg-slate-900 border-slate-700 opacity-50 cursor-not-allowed'}
+                  ${bookingTutor.is_online ? 'bg-green-500/10 border-green-500/50 hover:bg-green-500/20 cursor-pointer' : 'bg-slate-900 border-slate-700 opacity-50 cursor-not-allowed'}
                 `}
               >
                 <div className="flex items-center gap-3 text-left">
-                  <div className={`p-2 rounded-full ${bookingTutor.is_online ? 'bg-green-500 text-black' : 'bg-slate-800 text-slate-500'}`}>
-                    <Zap size={20} fill="currentColor" />
-                  </div>
+                  <div className={`p-2 rounded-full ${bookingTutor.is_online ? 'bg-green-500 text-black' : 'bg-slate-800 text-slate-500'}`}><Zap size={20} fill="currentColor" /></div>
                   <div>
-                    <span className={`block font-bold ${bookingTutor.is_online ? 'text-white' : 'text-slate-500'}`}>
-                      {bookingTutor.is_online ? "Request Live (Pay R150)" : "Tutor is OFFLINE"}
-                    </span>
-                    <span className="text-xs text-slate-400">
-                      {bookingTutor.is_online ? "Instant Booking" : "Cannot book live right now"}
-                    </span>
+                    <span className={`block font-bold ${bookingTutor.is_online ? 'text-white' : 'text-slate-500'}`}>{bookingTutor.is_online ? "Request Live (Pay R150)" : "Tutor is OFFLINE"}</span>
+                    <span className="text-xs text-slate-400">{bookingTutor.is_online ? "Instant Booking" : "Cannot book live right now"}</span>
                   </div>
                 </div>
               </button>
@@ -405,3 +381,8 @@ export default function FindTutorPage() {
     </div>
   );
 }
+
+// 3. EXPORT AS DYNAMIC (Client Side Only)
+export default dynamic(() => Promise.resolve(FindTutorContent), {
+  ssr: false,
+});
