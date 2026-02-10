@@ -84,7 +84,10 @@ export default function FindTutorPage() {
     if (error) {
       alert("Payment successful but Database error: " + error.message);
     } else {
-      alert(pendingBookingType === 'live' ? "⚡ Payment Complete! Request Sent." : "📅 Payment Complete! Session Scheduled.");
+      alert(pendingBookingType === 'live' 
+  ? "⚡ Request Sent! If the tutor doesn't accept within 10 mins, you will be automatically refunded." 
+  : "📅 Session Scheduled! If the tutor rejects or misses the session, you will be fully refunded."
+);
       setBookingTutor(null);
       setGuestEmails(""); 
       setTopicDescription("");
