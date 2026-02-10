@@ -85,19 +85,39 @@ export default function Dashboard() {
             tutors: { ...tutor, profiles: tutorProfile }
           };
         });
+        checkExpiredRefunds(fetchedBookings);
       }
     }
     
     // FILTER LOGIC
     const now = new Date();
     const cleanBookings = fetchedBookings.filter((b: any) => {
+      // 1. Hide Rejected (Only for Tutor)
       if (profileData?.is_tutor && b.status === 'rejected') return false; 
+      
+      // 2. Hide Completed
+      // if (b.status === 'completed') return false; // Optional: Hide completed history?
+
+      // 3. EXPIRY LOGIC
       if (b.status === 'pending') {
-         const bookingTime = new Date(b.scheduled_time || b.created_at);
-         const expiryTime = b.booking_type === 'live' 
-            ? new Date(new Date(b.created_at).getTime() + 10 * 60000) 
-            : bookingTime; 
-         if (now > expiryTime) return false; 
+         const createdTime = new Date(b.created_at);
+         const scheduledTime = new Date(b.scheduled_time);
+
+         if (b.booking_type === 'live') {
+            // Live: Hide after 10 mins
+            const tenMinutesLater = new Date(createdTime.getTime() + 10 * 60000);
+            if (now > tenMinutesLater) {
+                // TODO: Trigger Refund here if paid
+                return false; 
+            }
+         } else {
+            // Scheduled: Hide after 1 Hour past start time
+            const oneHourLater = new Date(scheduledTime.getTime() + 60 * 60000);
+            if (now > oneHourLater) {
+                // TODO: Trigger Refund here if paid
+                return false;
+            }
+         }
       }
       return true;
     });
@@ -149,6 +169,38 @@ export default function Dashboard() {
     } finally {
         setSettingUpBank(false);
     }
+  };
+  // NEW: Check for expired pending bookings and refund them
+  const checkExpiredRefunds = async (bookingsList: any[]) => {
+    const now = new Date();
+    
+    bookingsList.forEach(async (b) => {
+        if (b.status === 'pending' && b.payment_status === 'paid') {
+            const createdTime = new Date(b.created_at);
+            const scheduledTime = new Date(b.scheduled_time);
+            let isExpired = false;
+
+            if (b.booking_type === 'live') {
+                // Expired if > 15 mins old (giving 5 mins buffer)
+                if (now > new Date(createdTime.getTime() + 15 * 60000)) isExpired = true;
+            } else {
+                // Expired if > 2 hours past start time
+                if (now > new Date(scheduledTime.getTime() + 120 * 60000)) isExpired = true;
+            }
+
+            if (isExpired) {
+                console.log("Found expired booking to refund:", b.id);
+                // Call Refund API
+                await fetch('/api/paystack/refund', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ reference: b.payment_intent_id })
+                });
+                // Update DB to 'cancelled' so we don't refund twice
+                await supabase.from('bookings').update({ status: 'cancelled', payment_status: 'refunded' }).eq('id', b.id);
+            }
+        }
+    });
   };
 
   // 2. TRANSCRIPT UPLOAD
@@ -529,7 +581,7 @@ export default function Dashboard() {
                      {profile?.is_tutor && booking.status === 'pending' && (
                         <div className="flex gap-2">
                           <button onClick={() => handleBookingAction(booking.id, 'confirmed')} className="bg-green-600 hover:bg-green-500 text-white p-2 rounded-lg" title="Accept"><Check size={20} /></button>
-                          <button onClick={() => handleBookingAction(booking.id, 'rejected')} className="bg-red-600 hover:bg-red-500 text-white p-2 rounded-lg" title="Reject"><XIcon size={20} /></button>
+                          <button onClick={() => handleBookingAction(booking, 'rejected')} className="bg-red-600 hover:bg-red-500 text-white p-2 rounded-lg" title="Reject"><XIcon size={20} /></button>
                         </div>
                      )}
                      {!profile?.is_tutor && (
