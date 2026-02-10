@@ -94,8 +94,9 @@ export default function FindTutorClient() {
   const onPaymentClose = () => {
     console.log("Payment closed by user");
   };
+const triggerBookingFlow = async (type: 'live' | 'scheduled') => {
+    console.log("Triggering booking...", type); // DEBUG 1
 
-  const triggerBookingFlow = async (type: 'live' | 'scheduled') => {
     const { data: { user } } = await supabase.auth.getUser();
 
     if (!user) {
@@ -114,8 +115,20 @@ export default function FindTutorClient() {
       return;
     }
 
+    console.log("Validation passed. Opening Paystack..."); // DEBUG 2
+    
+    // Check if key exists
+    if (!process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY) {
+        alert("System Error: Payment Key Missing. Tell Admin.");
+        return;
+    }
+
     setPendingBookingType(type);
-    initializePayment({ onSuccess: onPaymentSuccess, onClose: onPaymentClose });
+    
+    // Slight delay to ensure state updates before Paystack opens
+    setTimeout(() => {
+        initializePayment({ onSuccess: onPaymentSuccess, onClose: onPaymentClose });
+    }, 100);
   };
 
 

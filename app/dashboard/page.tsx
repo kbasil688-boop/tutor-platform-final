@@ -90,35 +90,41 @@ export default function Dashboard() {
     }
     
     // FILTER LOGIC
+   // FILTER LOGIC (CLEAN DASHBOARD)
     const now = new Date();
     const cleanBookings = fetchedBookings.filter((b: any) => {
-      // 1. Hide Rejected (Only for Tutor)
-      if (profileData?.is_tutor && b.status === 'rejected') return false; 
       
-      // 2. Hide Completed
-      // if (b.status === 'completed') return false; // Optional: Hide completed history?
+      // 1. IMMEDIATE REMOVAL: Cancelled or Rejected
+      // If it's done/failed, get it off the screen immediately.
+      if (b.status === 'rejected' || b.status === 'cancelled') return false;
+      
+      // 2. COMPLETED REMOVAL
+      if (b.status === 'completed') return false;
 
-      // 3. EXPIRY LOGIC
+      // 3. PENDING EXPIRY (Timeouts)
       if (b.status === 'pending') {
          const createdTime = new Date(b.created_at);
-         const scheduledTime = new Date(b.scheduled_time);
+         const scheduledTime = new Date(b.scheduled_time || b.created_at);
 
          if (b.booking_type === 'live') {
-            // Live: Hide after 10 mins
-            const tenMinutesLater = new Date(createdTime.getTime() + 10 * 60000);
-            if (now > tenMinutesLater) {
-                // TODO: Trigger Refund here if paid
-                return false; 
-            }
+            // Live: Hide if older than 15 mins (Buffer)
+            const expireTime = new Date(createdTime.getTime() + 15 * 60000);
+            if (now > expireTime) return false; 
          } else {
-            // Scheduled: Hide after 1 Hour past start time
-            const oneHourLater = new Date(scheduledTime.getTime() + 60 * 60000);
-            if (now > oneHourLater) {
-                // TODO: Trigger Refund here if paid
-                return false;
-            }
+            // Scheduled: Hide if 1 hour past start time (No show)
+            const expireTime = new Date(scheduledTime.getTime() + 60 * 60000);
+            if (now > expireTime) return false;
          }
       }
+
+      // 4. CONFIRMED EXPIRY (1hr 30min Rule)
+      if (b.status === 'confirmed') {
+         const scheduledTime = new Date(b.scheduled_time || b.created_at);
+         // Hide 90 minutes after start time
+         const finishTime = new Date(scheduledTime.getTime() + 90 * 60000); 
+         if (now > finishTime) return false;
+      }
+
       return true;
     });
 
