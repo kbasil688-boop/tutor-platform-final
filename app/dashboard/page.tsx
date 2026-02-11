@@ -14,20 +14,6 @@ export default function Dashboard() {
   const [uploadingFile, setUploadingFile] = useState(false);
   const router = useRouter();
 
-  // --- PAYSTACK STATE ---
-  const [bankName, setBankName] = useState('Capitec Bank');
-  const [accNumber, setAccNumber] = useState('');
-  const [settingUpBank, setSettingUpBank] = useState(false);
-
-  const BANKS = [
-    { name: 'Capitec Bank', code: '470010' },
-    { name: 'FNB', code: '250655' },
-    { name: 'Standard Bank', code: '051001' },
-    { name: 'Absa', code: '632005' },
-    { name: 'Nedbank', code: '198765' },
-    { name: 'TymeBank', code: '678910' }
-  ];
-
   const ensureProtocol = (url: string) => {
     if (!url) return '#';
     let cleanUrl = url.trim();
@@ -36,6 +22,27 @@ export default function Dashboard() {
     }
     return cleanUrl;
   };
+
+  // --- STRIPE RETURN HANDLER ---
+  useEffect(() => {
+    const query = new URLSearchParams(window.location.search);
+    if (query.get('setup_complete') === 'true' && query.get('account_id')) {
+      const saveStripeId = async () => {
+        const accId = query.get('account_id');
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user && accId) {
+          await supabase.from('tutors').update({ 
+             stripe_account_id: accId,
+             payouts_enabled: true 
+          }).eq('user_id', user.id);
+          
+          alert("Bank Account Connected Successfully! You can now receive payments.");
+          router.replace('/dashboard'); 
+        }
+      };
+      saveStripeId();
+    }
+  }, []);
 
   const refreshData = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -85,46 +92,28 @@ export default function Dashboard() {
             tutors: { ...tutor, profiles: tutorProfile }
           };
         });
-        checkExpiredRefunds(fetchedBookings);
       }
     }
     
     // FILTER LOGIC
-   // FILTER LOGIC (CLEAN DASHBOARD)
     const now = new Date();
     const cleanBookings = fetchedBookings.filter((b: any) => {
-      
-      // 1. IMMEDIATE REMOVAL: Cancelled or Rejected
-      // If it's done/failed, get it off the screen immediately.
+      // Hide rejected/cancelled immediately
       if (b.status === 'rejected' || b.status === 'cancelled') return false;
       
-      // 2. COMPLETED REMOVAL
-      if (b.status === 'completed') return false;
-
-      // 3. PENDING EXPIRY (Timeouts)
       if (b.status === 'pending') {
-         const createdTime = new Date(b.created_at);
-         const scheduledTime = new Date(b.scheduled_time || b.created_at);
+         const bookingTime = new Date(b.scheduled_time || b.created_at);
+         const expiryTime = b.booking_type === 'live' 
+            ? new Date(new Date(b.created_at).getTime() + 15 * 60000) 
+            : new Date(bookingTime.getTime() + 60 * 60000); 
 
-         if (b.booking_type === 'live') {
-            // Live: Hide if older than 15 mins (Buffer)
-            const expireTime = new Date(createdTime.getTime() + 15 * 60000);
-            if (now > expireTime) return false; 
-         } else {
-            // Scheduled: Hide if 1 hour past start time (No show)
-            const expireTime = new Date(scheduledTime.getTime() + 60 * 60000);
-            if (now > expireTime) return false;
-         }
+         if (now > expiryTime) return false; 
       }
-
-      // 4. CONFIRMED EXPIRY (1hr 30min Rule)
+      // Hide confirmed bookings 2 hours after start
       if (b.status === 'confirmed') {
-         const scheduledTime = new Date(b.scheduled_time || b.created_at);
-         // Hide 90 minutes after start time
-         const finishTime = new Date(scheduledTime.getTime() + 90 * 60000); 
-         if (now > finishTime) return false;
+          const startTime = new Date(b.scheduled_time || b.created_at);
+          if (now > new Date(startTime.getTime() + 120 * 60000)) return false;
       }
-
       return true;
     });
 
@@ -139,77 +128,6 @@ export default function Dashboard() {
 
   // --- ACTIONS ---
 
-  // 1. PAYSTACK BANK SETUP
-  const handleBankSetup = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSettingUpBank(true);
-
-    const selectedBank = BANKS.find(b => b.name === bankName);
-    
-    try {
-        const res = await fetch('/api/paystack/create-subaccount', {
-            method: 'POST',
-            body: JSON.stringify({
-                business_name: profile.full_name,
-                bank_code: selectedBank?.code,
-                account_number: accNumber
-            })
-        });
-
-        const data = await res.json();
-        if (data.error) throw new Error(data.error);
-
-        // Save Code to Supabase
-        await supabase.from('tutors').update({
-            payment_subaccount_code: data.subaccount_code,
-            bank_name: bankName,
-            account_number: accNumber,
-            payouts_enabled: true
-        }).eq('id', tutorData.id);
-
-        alert("Bank Details Saved! You can now receive payments.");
-        refreshData();
-
-    } catch (err: any) {
-        alert("Bank Setup Failed: " + err.message);
-    } finally {
-        setSettingUpBank(false);
-    }
-  };
-  // NEW: Check for expired pending bookings and refund them
-  const checkExpiredRefunds = async (bookingsList: any[]) => {
-    const now = new Date();
-    
-    bookingsList.forEach(async (b) => {
-        if (b.status === 'pending' && b.payment_status === 'paid') {
-            const createdTime = new Date(b.created_at);
-            const scheduledTime = new Date(b.scheduled_time);
-            let isExpired = false;
-
-            if (b.booking_type === 'live') {
-                // Expired if > 15 mins old (giving 5 mins buffer)
-                if (now > new Date(createdTime.getTime() + 15 * 60000)) isExpired = true;
-            } else {
-                // Expired if > 2 hours past start time
-                if (now > new Date(scheduledTime.getTime() + 120 * 60000)) isExpired = true;
-            }
-
-            if (isExpired) {
-                console.log("Found expired booking to refund:", b.id);
-                // Call Refund API
-                await fetch('/api/paystack/refund', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ reference: b.payment_intent_id })
-                });
-                // Update DB to 'cancelled' so we don't refund twice
-                await supabase.from('bookings').update({ status: 'cancelled', payment_status: 'refunded' }).eq('id', b.id);
-            }
-        }
-    });
-  };
-
-  // 2. TRANSCRIPT UPLOAD
   const handleTranscriptUpload = async (event: any) => {
     const file = event.target.files[0];
     if (!file) return;
@@ -266,7 +184,6 @@ export default function Dashboard() {
       if (!confirm("Are you sure? This will refund the student.")) return;
       reason = "Tutor unavailable.";
       
-      // --- NEW: AUTOMATIC REFUND ON REJECTION ---
       if (booking.payment_status === 'paid' && booking.payment_intent_id) {
           try {
              await fetch('/api/paystack/refund', {
@@ -285,37 +202,28 @@ export default function Dashboard() {
     refreshData();
   };
 
- const handleCancelBooking = async (booking: any) => {
-    if (!confirm("Are you sure? This will cancel the session and initiate a refund.")) return;
-
-    // 1. If it was a paid booking, try to refund via Paystack
-    if (booking.payment_status === 'paid' && booking.payment_intent_id) {
-        alert("Processing refund... this may take a moment.");
+  const handleCancelBooking = async (booking: any) => {
+    if (confirm("Remove this booking? This will cancel the session.")) {
         
-        try {
-            const res = await fetch('/api/paystack/refund', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ reference: booking.payment_intent_id })
-            });
-            
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.error);
-            
-            alert("Refund initiated! Funds will return to your account in 5-10 days.");
-        } catch (err: any) {
-            alert("Refund failed automatically: " + err.message + ". Please contact support.");
-            return; // Stop here if refund fails, so we don't cancel the booking yet
+        if (booking.payment_status === 'paid' && booking.payment_intent_id) {
+            alert("Processing refund...");
+            try {
+                const res = await fetch('/api/paystack/refund', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ reference: booking.payment_intent_id })
+                });
+                if (!res.ok) throw new Error("Refund API failed");
+                alert("Refund initiated! Funds return in 3-5 days.");
+            } catch (err: any) {
+                alert("Refund failed: " + err.message);
+                return;
+            }
         }
-    }
 
-    // 2. Mark as Cancelled in Database (Don't delete, keep for records)
-    await supabase
-        .from('bookings')
-        .update({ status: 'cancelled', payment_status: 'refunded' })
-        .eq('id', booking.id);
-        
-    refreshData();
+      await supabase.from('bookings').delete().eq('id', booking.id);
+      refreshData();
+    }
   };
 
   const handleUploadClick = () => {
@@ -342,7 +250,7 @@ export default function Dashboard() {
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
-    alert("Link copied! Send it to your group.");
+    alert("Link copied!");
   };
 
   const getStatusColor = (status: string) => {
@@ -398,43 +306,57 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* --- PAYSTACK BANK DETAILS FORM (TUTORS ONLY) --- */}
+        {/* --- STATS GRID (RESTORED) --- */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          <StatCard icon={<Calendar />} label="Total Bookings" value={bookings.length} />
+          {profile?.is_tutor ? (
+             <>
+               <StatCard icon={<Check />} label="Confirmed Sessions" value={bookings.filter(b => b.status === 'confirmed').length} color="text-green-400" />
+               <StatCard icon={<DollarSign />} label="Potential Earnings" value={`R ${bookings.filter(b => b.status !== 'rejected').length * (tutorData?.price_per_hour || 0)}`} color="text-yellow-400" />
+             </>
+          ) : (
+             <>
+               <StatCard icon={<Clock />} label="Pending" value={bookings.filter(b => b.status === 'pending').length} color="text-yellow-400" />
+               <StatCard icon={<Check />} label="Confirmed" value={bookings.filter(b => b.status === 'confirmed').length} color="text-green-400" />
+             </>
+          )}
+        </div>
+
+        {/* --- STRIPE PAYMENT SETUP (TUTORS ONLY) --- */}
         {profile?.is_tutor && !tutorData?.payouts_enabled && (
-           <div className="mb-6 bg-slate-800 border border-slate-700 p-6 rounded-2xl">
-             <div className="flex items-center gap-2 mb-4 text-white">
-                <Banknote className="text-green-400" />
-                <h3 className="font-bold text-lg">Add Bank Details (To Receive Payments)</h3>
+           <div className="mb-6 bg-red-500/10 border border-red-500/50 p-6 rounded-2xl flex flex-col md:flex-row items-center justify-between gap-4">
+             <div>
+               <h3 className="text-red-400 font-bold text-lg flex items-center gap-2"><DollarSign /> Payouts Not Active</h3>
+               <p className="text-slate-300 text-sm">You cannot receive money yet. Connect your bank account to start.</p>
              </div>
-             <form onSubmit={handleBankSetup} className="flex flex-col md:flex-row gap-4 items-end">
-                <div className="w-full">
-                    <label className="text-xs text-slate-400 font-bold uppercase mb-1 block">Bank Name</label>
-                    <select 
-                        className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-green-500 outline-none"
-                        value={bankName}
-                        onChange={(e) => setBankName(e.target.value)}
-                    >
-                        {BANKS.map(b => <option key={b.code} value={b.name}>{b.name}</option>)}
-                    </select>
-                </div>
-                <div className="w-full">
-                    <label className="text-xs text-slate-400 font-bold uppercase mb-1 block">Account Number</label>
-                    <input 
-                        type="text" 
-                        className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-green-500 outline-none"
-                        placeholder="1234567890"
-                        value={accNumber}
-                        onChange={(e) => setAccNumber(e.target.value)}
-                        required
-                    />
-                </div>
-                <button disabled={settingUpBank} className="bg-green-600 hover:bg-green-500 text-white font-bold py-3 px-6 rounded-xl w-full md:w-auto">
-                    {settingUpBank ? 'Saving...' : 'Save Bank'}
-                </button>
-             </form>
+             <button 
+               onClick={async (e) => {
+                  const btn = e.currentTarget;
+                  btn.innerText = "Redirecting...";
+                  btn.disabled = true;
+                  try {
+                    const res = await fetch('/api/stripe/onboard', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ userId: profile.id, email: profile.email })
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.error);
+                    if (data.url) window.location.href = data.url;
+                  } catch (error: any) {
+                    alert("Setup Failed: " + error.message);
+                    btn.innerText = "Setup Payouts (Stripe)";
+                    btn.disabled = false;
+                  }
+               }}
+               className="bg-red-600 hover:bg-red-500 text-white font-bold py-3 px-6 rounded-xl w-full md:w-auto"
+             >
+               Setup Payouts (Stripe)
+             </button>
            </div>
         )}
 
-        {/* --- VERIFICATION SECTION (TUTORS) --- */}
+        {/* --- VERIFICATION SECTION (TUTORS ONLY) --- */}
         {profile?.is_tutor && (
           <div className="mb-10 bg-slate-800 p-6 rounded-2xl border border-slate-700 relative overflow-hidden">
              
@@ -586,7 +508,7 @@ export default function Dashboard() {
                      </span>
                      {profile?.is_tutor && booking.status === 'pending' && (
                         <div className="flex gap-2">
-                          <button onClick={() => handleBookingAction(booking.id, 'confirmed')} className="bg-green-600 hover:bg-green-500 text-white p-2 rounded-lg" title="Accept"><Check size={20} /></button>
+                          <button onClick={() => handleBookingAction(booking, 'confirmed')} className="bg-green-600 hover:bg-green-500 text-white p-2 rounded-lg" title="Accept"><Check size={20} /></button>
                           <button onClick={() => handleBookingAction(booking, 'rejected')} className="bg-red-600 hover:bg-red-500 text-white p-2 rounded-lg" title="Reject"><XIcon size={20} /></button>
                         </div>
                      )}
@@ -604,4 +526,14 @@ export default function Dashboard() {
       </div>
     </div>
   );
+}
+
+function StatCard({ icon, label, value, color = "text-yellow-400" }: any) {
+  return (
+    <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700">
+      <div className={`${color} mb-2`}>{icon}</div>
+      <div className="text-3xl font-bold mb-1">{value}</div>
+      <div className="text-slate-400 text-sm">{label}</div>
+    </div>
+  )
 }

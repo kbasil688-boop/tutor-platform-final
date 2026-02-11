@@ -5,7 +5,7 @@ import { Search, Star, Clock, Zap, Calendar, ArrowLeft, X, Video, User, RotateCc
 import Link from 'next/link';
 import { supabase } from '../lib/supabaseClient';
 import { useRouter } from 'next/navigation';
-import { usePaystackPayment } from 'react-paystack'; 
+import Script from 'next/script'; // Import Script
 
 export default function FindTutorClient() {
   const [guestEmails, setGuestEmails] = useState("");
@@ -14,14 +14,10 @@ export default function FindTutorClient() {
   const [tutors, setTutors] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   
-  // Modals
   const [bookingTutor, setBookingTutor] = useState<any>(null);
   const [profileTutor, setProfileTutor] = useState<any>(null);
   const [tutorLessons, setTutorLessons] = useState<any[]>([]);
   const [scheduleDate, setScheduleDate] = useState("");
-
-  // Payment State
-  const [pendingBookingType, setPendingBookingType] = useState<'live' | 'scheduled' | null>(null);
   const [userEmail, setUserEmail] = useState("student@tutorhub.co.za");
 
   const router = useRouter();
@@ -36,7 +32,6 @@ export default function FindTutorClient() {
 
   useEffect(() => {
     fetchTutors();
-    // Get current user email for payment receipt
     supabase.auth.getUser().then(({data}) => {
        if(data.user?.email) setUserEmail(data.user.email);
     });
@@ -48,39 +43,73 @@ export default function FindTutorClient() {
     setTutorLessons(data || []);
   };
 
-  // --- PAYSTACK CONFIGURATION ---
-  const config = {
-    reference: (new Date()).getTime().toString(),
-    email: userEmail,
-    amount: 15000, // R150.00
-    currency: 'ZAR',
-    publicKey: process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY || '', 
+  // --- 2. PAYSTACK POPUP LOGIC (FIXED) ---
+  const payWithPaystack = async (type: 'live' | 'scheduled') => {
+    const { data: { user } } = await supabase.auth.getUser();
+
+    // Validation
+    if (!user) {
+      alert("Please login to book a tutor!");
+      router.push('/auth');
+      return;
+    }
+    if (type === 'scheduled' && !scheduleDate) {
+      alert("Please select a date and time!");
+      return;
+    }
+    if (!topicDescription.trim()) {
+      alert("Please tell the tutor what you are struggling with!");
+      return;
+    }
+
+    // Check if Paystack loaded
+    if (typeof window === 'undefined' || !(window as any).PaystackPop) {
+      alert("Payment system still loading... please wait 2 seconds and try again.");
+      return;
+    }
+
+    // Dynamic Price Calculation
+    const amountInCents = (bookingTutor.price_per_hour || 150) * 100;
+
+    // FIX: Use .setup() instead of new()
+    const handler = (window as any).PaystackPop.setup({
+      key: process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY, 
+      email: user.email,
+      amount: amountInCents, 
+      currency: 'ZAR',
+      callback: (response: any) => { 
+        // Payment Success!
+        completeBooking(user, type, response.reference);
+      },
+      onClose: () => {
+        console.log("User closed payment");
+      }
+    });
+
+    // Open the popup
+    handler.openIframe();
   };
 
-  const initializePayment = usePaystackPayment(config);
-
-  const onPaymentSuccess = async (reference: any) => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-
+  // --- 3. SAVE BOOKING ---
+  const completeBooking = async (user: any, type: string, paymentRef: string) => {
     const { error } = await supabase.from('bookings').insert([
-        { 
-          student_id: user.id, 
-          tutor_id: bookingTutor.id,
-          status: 'pending',
-          booking_type: pendingBookingType,
-          scheduled_time: pendingBookingType === 'live' ? new Date().toISOString() : new Date(scheduleDate).toISOString(),
-          guest_emails: guestEmails,
-          topic_description: topicDescription,
-          payment_status: 'paid', 
-          payment_intent_id: reference.reference 
-        }
-      ]);
+      { 
+        student_id: user.id, 
+        tutor_id: bookingTutor.id,
+        status: 'pending',
+        booking_type: type,
+        scheduled_time: type === 'live' ? new Date().toISOString() : new Date(scheduleDate).toISOString(),
+        guest_emails: guestEmails,
+        topic_description: topicDescription,
+        payment_status: 'paid', 
+        payment_intent_id: paymentRef 
+      }
+    ]);
 
     if (error) {
       alert("Payment successful but Database error: " + error.message);
     } else {
-      alert(pendingBookingType === 'live' 
+      alert(type === 'live' 
         ? "⚡ Request Sent! If the tutor doesn't accept within 10 mins, you will be automatically refunded." 
         : "📅 Session Scheduled! If the tutor rejects or misses the session, you will be fully refunded."
       );
@@ -91,47 +120,6 @@ export default function FindTutorClient() {
     }
   };
 
-  const onPaymentClose = () => {
-    console.log("Payment closed by user");
-  };
-const triggerBookingFlow = async (type: 'live' | 'scheduled') => {
-    console.log("Triggering booking...", type); // DEBUG 1
-
-    const { data: { user } } = await supabase.auth.getUser();
-
-    if (!user) {
-      alert("Please login to book a tutor!");
-      router.push('/auth');
-      return;
-    }
-
-    if (type === 'scheduled' && !scheduleDate) {
-      alert("Please select a date and time for the session!");
-      return;
-    }
-
-    if (!topicDescription.trim()) {
-      alert("Please describe what you need help with.");
-      return;
-    }
-
-    console.log("Validation passed. Opening Paystack..."); // DEBUG 2
-    
-    // Check if key exists
-    if (!process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY) {
-        alert("System Error: Payment Key Missing. Tell Admin.");
-        return;
-    }
-
-    setPendingBookingType(type);
-    
-    // Slight delay to ensure state updates before Paystack opens
-    setTimeout(() => {
-        initializePayment({ onSuccess: onPaymentSuccess, onClose: onPaymentClose });
-    }, 100);
-  };
-
-
   const filteredTutors = tutors.filter(tutor => 
     tutor.subject.toLowerCase().includes(searchTerm.toLowerCase()) ||
     tutor.profiles?.full_name?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -139,6 +127,10 @@ const triggerBookingFlow = async (type: 'live' | 'scheduled') => {
 
   return (
     <div className="min-h-screen bg-slate-900 text-white font-sans relative">
+      
+      {/* LOAD PAYSTACK SCRIPT */}
+      <Script src="https://js.paystack.co/v1/inline.js" strategy="lazyOnload" />
+
       <header className="sticky top-0 z-10 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 p-4">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row gap-4 items-center justify-between">
           <Link href="/" className="flex items-center gap-2 group cursor-pointer">
@@ -220,6 +212,7 @@ const triggerBookingFlow = async (type: 'live' | 'scheduled') => {
         )}
       </main>
 
+      {/* --- PROFILE & LESSONS MODAL --- */}
       {profileTutor && (
         <div className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4">
           <div className="bg-slate-800 w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl border border-slate-700 relative shadow-2xl">
@@ -311,7 +304,7 @@ const triggerBookingFlow = async (type: 'live' | 'scheduled') => {
 
             <h2 className="text-2xl font-bold mb-1">Book {bookingTutor.profiles.full_name}</h2>
             <p className="text-slate-400 text-sm mb-6">Subject: {bookingTutor.subject}</p>
-            <p className="text-yellow-400 font-bold mb-4">Price: R150.00 / session</p>
+            <p className="text-yellow-400 font-bold mb-4">Price: R{bookingTutor.price_per_hour}.00 / session</p>
 
             <div className="space-y-4">
               <div className="bg-slate-900 border border-slate-700 p-4 rounded-xl">
@@ -326,7 +319,7 @@ const triggerBookingFlow = async (type: 'live' | 'scheduled') => {
 
               {/* PAYMENT BUTTONS */}
               <button 
-                onClick={() => triggerBookingFlow('live')}
+                onClick={() => payWithPaystack('live')}
                 disabled={!bookingTutor.is_online}
                 className={`w-full p-4 rounded-xl border flex items-center justify-between transition
                   ${bookingTutor.is_online ? 'bg-green-500/10 border-green-500/50 hover:bg-green-500/20 cursor-pointer' : 'bg-slate-900 border-slate-700 opacity-50 cursor-not-allowed'}
@@ -335,7 +328,7 @@ const triggerBookingFlow = async (type: 'live' | 'scheduled') => {
                 <div className="flex items-center gap-3 text-left">
                   <div className={`p-2 rounded-full ${bookingTutor.is_online ? 'bg-green-500 text-black' : 'bg-slate-800 text-slate-500'}`}><Zap size={20} fill="currentColor" /></div>
                   <div>
-                    <span className={`block font-bold ${bookingTutor.is_online ? 'text-white' : 'text-slate-500'}`}>{bookingTutor.is_online ? "Request Live (Pay R150)" : "Tutor is OFFLINE"}</span>
+                    <span className={`block font-bold ${bookingTutor.is_online ? 'text-white' : 'text-slate-500'}`}>{bookingTutor.is_online ? `Request Live (Pay R${bookingTutor.price_per_hour})` : "Tutor is OFFLINE"}</span>
                     <span className="text-xs text-slate-400">{bookingTutor.is_online ? "Instant Booking" : "Cannot book live right now"}</span>
                   </div>
                 </div>
@@ -344,10 +337,10 @@ const triggerBookingFlow = async (type: 'live' | 'scheduled') => {
               <div className="bg-slate-900 border border-slate-700 p-4 rounded-xl">
                  <div className="flex items-center gap-3 mb-3">
                     <div className="p-2 rounded-full bg-blue-600 text-white"><Calendar size={20} /></div>
-                    <span className="font-bold">Schedule for Later (Pay R150)</span>
+                    <span className="font-bold">Schedule for Later (Pay R{bookingTutor.price_per_hour})</span>
                  </div>
                  <input type="datetime-local" className="w-full bg-slate-800 border border-slate-600 rounded-lg p-2 text-white text-sm mb-3" onChange={(e) => setScheduleDate(e.target.value)} />
-                 <button onClick={() => triggerBookingFlow('scheduled')} className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded-lg text-sm transition">Confirm & Pay</button>
+                 <button onClick={() => payWithPaystack('scheduled')} className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded-lg text-sm transition">Confirm & Pay</button>
               </div>
             </div>
           </div>
