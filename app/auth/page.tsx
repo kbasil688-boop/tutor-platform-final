@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useRouter } from 'next/navigation';
-import { Mail, Lock, Loader2, ArrowRight, User, GraduationCap, School, CheckSquare, Languages, Eye, EyeOff } from 'lucide-react';
+import { Mail, Lock, Loader2, ArrowRight, User, GraduationCap, School, CheckSquare, Languages, Eye, EyeOff, Linkedin } from 'lucide-react'; // Added Linkedin
 
 const PRESET_QUESTIONS = [
   "What is your 'Superpower' as a tutor?",
@@ -20,18 +20,21 @@ export default function AuthPage() {
   const [role, setRole] = useState<'student' | 'tutor'>('student');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ text: string, type: 'error' | 'success' } | null>(null);
-  const [showPassword, setShowPassword] = useState(false);
   
-  // NEW: Confirmation State
+  // State
+  const [showPassword, setShowPassword] = useState(false);
   const [confirmationSent, setConfirmationSent] = useState(false);
 
-  // Fields
+  // Form Fields
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
+  
+  // Tutor Fields
   const [subject, setSubject] = useState('');
   const [price, setPrice] = useState('');
   const [languageStr, setLanguageStr] = useState('');
+  const [linkedin, setLinkedin] = useState(''); // NEW: LinkedIn State
   
   // Q&A
   const [selectedIndices, setSelectedIndices] = useState<number[]>([]);
@@ -74,7 +77,6 @@ export default function AuthPage() {
           throw new Error("Please select and answer exactly 3 profile questions.");
         }
 
-        // 1. Prepare Metadata
         const formattedQA = selectedIndices.map(index => ({
           question: PRESET_QUESTIONS[index],
           answer: answers[index]
@@ -86,10 +88,10 @@ export default function AuthPage() {
           subject: subject,
           price: price,
           languages: languageStr,
+          linkedin_link: linkedin, // NEW: Sending LinkedIn to DB
           custom_questions: formattedQA
         };
 
-        // 2. Send Signup
         const { error: authError } = await supabase.auth.signUp({ 
           email, 
           password,
@@ -101,7 +103,6 @@ export default function AuthPage() {
 
         if (authError) throw authError;
 
-        // SHOW SUCCESS SCREEN
         setConfirmationSent(true);
 
       } else {
@@ -127,7 +128,6 @@ export default function AuthPage() {
     }
   };
 
-  // --- CONFIRMATION SCREEN ---
   if (confirmationSent) {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
@@ -139,20 +139,19 @@ export default function AuthPage() {
            <p className="text-slate-300 mb-8 leading-relaxed">
              We have sent a verification link to <span className="text-white font-bold">{email}</span>.
              <br/><br/>
-             Please click the link to activate your account and start your journey with TutBuddy
+             Please click the link to activate your account and start your journey with TutorHub!
            </p>
-          
+           <button onClick={() => window.location.reload()} className="text-slate-500 hover:text-white underline text-sm">Back to Login</button>
         </div>
       </div>
     );
   }
 
-  // --- STANDARD AUTH FORM ---
   return (
     <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4 py-10">
       <div className="bg-slate-800 border border-slate-700 p-8 rounded-2xl w-full max-w-md shadow-2xl">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-extrabold text-white mb-2">{isSignUp ? 'Join TutBuddy' : 'Welcome Back'}</h1>
+          <h1 className="text-3xl font-extrabold tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-orange-500 mb-2">Tut<span className="text-white">Buddy</span></h1>
           <p className="text-slate-400">{isSignUp ? 'Create your profile.' : 'Login to your account.'}</p>
         </div>
 
@@ -204,11 +203,7 @@ export default function AuthPage() {
                 value={password} 
                 onChange={(e) => setPassword(e.target.value)} 
               />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-3 text-slate-500 hover:text-white"
-              >
+              <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-3 text-slate-500 hover:text-white">
                 {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
               </button>
             </div>
@@ -237,6 +232,12 @@ export default function AuthPage() {
               <div>
                 <label className="block text-slate-400 text-xs uppercase font-bold mb-2 flex items-center gap-1"><Languages size={14}/> Languages (Comma separated)</label>
                 <input type="text" required className="w-full bg-slate-900 border border-slate-700 rounded-xl py-3 px-4 text-white focus:border-yellow-400 outline-none" placeholder="e.g. English, Zulu, Xhosa" value={languageStr} onChange={(e) => setLanguageStr(e.target.value)} />
+              </div>
+
+              {/* --- NEW: LINKEDIN INPUT --- */}
+              <div>
+                <label className="block text-slate-400 text-xs uppercase font-bold mb-2 flex items-center gap-1"><Linkedin size={14}/> LinkedIn Profile (Optional)</label>
+                <input type="text" className="w-full bg-slate-900 border border-slate-700 rounded-xl py-3 px-4 text-white focus:border-yellow-400 outline-none" placeholder="https://linkedin.com/in/yourname" value={linkedin} onChange={(e) => setLinkedin(e.target.value)} />
               </div>
 
               <div className="bg-slate-900 p-4 rounded-xl border border-slate-700">
