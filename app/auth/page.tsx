@@ -139,7 +139,7 @@ export default function AuthPage() {
            <p className="text-slate-300 mb-8 leading-relaxed">
              We have sent a verification link to <span className="text-white font-bold">{email}</span>.
              <br/><br/>
-             Please click the link to activate your account and start your journey with TutorHub!
+             Please click the link to activate your account and start your journey with TutBuddy!
            </p>
            <button onClick={() => window.location.reload()} className="text-slate-500 hover:text-white underline text-sm">Back to Login</button>
         </div>
@@ -236,7 +236,7 @@ export default function AuthPage() {
 
               {/* --- NEW: LINKEDIN INPUT --- */}
               <div>
-                <label className="block text-slate-400 text-xs uppercase font-bold mb-2 flex items-center gap-1"><Linkedin size={14}/> LinkedIn Profile (Optional)</label>
+                <label className="block text-slate-400 text-xs uppercase font-bold mb-2 flex items-center gap-1"><Linkedin size={14}/> LinkedIn Profile (Optional but useful)</label>
                 <input type="text" className="w-full bg-slate-900 border border-slate-700 rounded-xl py-3 px-4 text-white focus:border-yellow-400 outline-none" placeholder="https://linkedin.com/in/yourname" value={linkedin} onChange={(e) => setLinkedin(e.target.value)} />
               </div>
 

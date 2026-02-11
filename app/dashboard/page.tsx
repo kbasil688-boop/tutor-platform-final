@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { User, Calendar, DollarSign, Video, LogOut, Zap, Bell, Clock, Check, X as XIcon, Search, PlusCircle, Trash2, AlertCircle, GraduationCap, Copy, Users, ShieldCheck, Upload, Banknote } from 'lucide-react';
+import { User, Calendar, DollarSign, Video, LogOut, Zap, Bell, Clock, Check, X as XIcon, Search, PlusCircle, Trash2, AlertCircle, GraduationCap, Copy, Users, ShieldCheck, Upload, Banknote, Star, RotateCcw } from 'lucide-react';
 
 export default function Dashboard() {
   const [profile, setProfile] = useState<any>(null);
@@ -14,6 +14,24 @@ export default function Dashboard() {
   const [uploadingFile, setUploadingFile] = useState(false);
   const router = useRouter();
 
+  // --- BANK FORM STATE (SIMPLE) ---
+  const [bankName, setBankName] = useState('Capitec Bank');
+  const [accNumber, setAccNumber] = useState('');
+
+  // RATING STATE
+  const [ratingModal, setRatingModal] = useState<any>(null);
+  const [stars, setStars] = useState(5);
+  const [comment, setComment] = useState("");
+
+  const BANKS = [
+    { name: 'Capitec Bank', code: '470010' },
+    { name: 'FNB', code: '250655' },
+    { name: 'Standard Bank', code: '051001' },
+    { name: 'Absa', code: '632005' },
+    { name: 'Nedbank', code: '198765' },
+    { name: 'TymeBank', code: '678910' }
+  ];
+
   const ensureProtocol = (url: string) => {
     if (!url) return '#';
     let cleanUrl = url.trim();
@@ -22,27 +40,6 @@ export default function Dashboard() {
     }
     return cleanUrl;
   };
-
-  // --- STRIPE RETURN HANDLER ---
-  useEffect(() => {
-    const query = new URLSearchParams(window.location.search);
-    if (query.get('setup_complete') === 'true' && query.get('account_id')) {
-      const saveStripeId = async () => {
-        const accId = query.get('account_id');
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user && accId) {
-          await supabase.from('tutors').update({ 
-             stripe_account_id: accId,
-             payouts_enabled: true 
-          }).eq('user_id', user.id);
-          
-          alert("Bank Account Connected Successfully! You can now receive payments.");
-          router.replace('/dashboard'); 
-        }
-      };
-      saveStripeId();
-    }
-  }, []);
 
   const refreshData = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -61,6 +58,10 @@ export default function Dashboard() {
       setTutorData(tData);
 
       if (tData) {
+        // Load existing bank details
+        if(tData.bank_name) setBankName(tData.bank_name);
+        if(tData.account_number) setAccNumber(tData.account_number);
+
         const { data: bData } = await supabase.from('bookings').select('*').eq('tutor_id', tData.id);
         
         if (bData && bData.length > 0) {
@@ -128,6 +129,25 @@ export default function Dashboard() {
 
   // --- ACTIONS ---
 
+  // 1. SAVE BANK DETAILS (MANUAL)
+  const handleSaveBank = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if(!accNumber) return;
+
+    const { error } = await supabase.from('tutors').update({
+        bank_name: bankName,
+        account_number: accNumber,
+        payouts_enabled: true
+    }).eq('id', tutorData.id);
+
+    if(error) {
+        alert("Error saving bank details: " + error.message);
+    } else {
+        alert("Bank details saved! We will use this for manual payouts.");
+        refreshData();
+    }
+  };
+
   const handleTranscriptUpload = async (event: any) => {
     const file = event.target.files[0];
     if (!file) return;
@@ -184,6 +204,7 @@ export default function Dashboard() {
       if (!confirm("Are you sure? This will refund the student.")) return;
       reason = "Tutor unavailable.";
       
+      // Refund Logic
       if (booking.payment_status === 'paid' && booking.payment_intent_id) {
           try {
              await fetch('/api/paystack/refund', {
@@ -205,6 +226,7 @@ export default function Dashboard() {
   const handleCancelBooking = async (booking: any) => {
     if (confirm("Remove this booking? This will cancel the session.")) {
         
+        // Refund Logic
         if (booking.payment_status === 'paid' && booking.payment_intent_id) {
             alert("Processing refund...");
             try {
@@ -213,7 +235,8 @@ export default function Dashboard() {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ reference: booking.payment_intent_id })
                 });
-                if (!res.ok) throw new Error("Refund API failed");
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error);
                 alert("Refund initiated! Funds return in 3-5 days.");
             } catch (err: any) {
                 alert("Refund failed: " + err.message);
@@ -250,7 +273,39 @@ export default function Dashboard() {
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
-    alert("Link copied!");
+    alert("Link copied! Send it to your group.");
+  };
+
+  const isLessonFinished = (booking: any) => {
+    if (booking.status !== 'confirmed') return false;
+    const lessonTime = new Date(booking.scheduled_time || booking.created_at);
+    const oneHourLater = new Date(lessonTime.getTime() + 60 * 60000); 
+    const now = new Date();
+    return now > oneHourLater; 
+  };
+
+  const submitReview = async () => {
+    if (!ratingModal) return;
+    const { error } = await supabase.from('reviews').insert([{
+        tutor_id: ratingModal.tutor_id,
+        student_id: profile.id,
+        rating: stars,
+        comment: comment
+    }]);
+
+    if (error) {
+        alert("Error: " + error.message);
+    } else {
+        await supabase.from('bookings').update({ status: 'completed' }).eq('id', ratingModal.id);
+        alert("Review Submitted! Session Closed.");
+        setRatingModal(null);
+        refreshData();
+    }
+  };
+
+  const markComplete = async (bookingId: number) => {
+      await supabase.from('bookings').update({ status: 'completed' }).eq('id', bookingId);
+      refreshData();
   };
 
   const getStatusColor = (status: string) => {
@@ -266,16 +321,11 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen bg-slate-900 text-white font-sans p-6">
       
-      {/* BRAND HEADER (Logo) */}
       <div className="max-w-4xl mx-auto mb-6">
         <Link href="/" className="inline-block group cursor-pointer">
           <div className="flex items-center gap-2">
-            <div className="bg-yellow-400/10 p-2 rounded-lg border border-yellow-400/20 group-hover:border-yellow-400/50 transition">
-              <GraduationCap className="text-yellow-400 group-hover:rotate-12 transition duration-300" size={24} />
-            </div>
-            <h1 className="text-xl font-extrabold tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-orange-500">
-              Tut<span className="text-white">Buddy</span>
-            </h1>
+            <div className="bg-yellow-400/10 p-2 rounded-lg border border-yellow-400/20"><GraduationCap className="text-yellow-400" size={24} /></div>
+            <h1 className="text-xl font-extrabold tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-orange-500">TUT<span className="text-white">BUDDY</span></h1>
           </div>
         </Link>
       </div>
@@ -283,19 +333,12 @@ export default function Dashboard() {
       <div className="max-w-4xl mx-auto">
         <div className="flex flex-col md:flex-row justify-between items-center mb-8 border-b border-slate-700 pb-6 gap-4">
           <div className="flex items-center gap-4">
-             <div className="bg-blue-600 w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold border-2 border-yellow-400">
-               {profile?.full_name?.[0] || 'U'}
-             </div>
-             <div>
-               <h1 className="text-2xl font-bold">{profile?.full_name || 'User'}</h1>
-               <span className="bg-slate-800 text-slate-400 px-3 py-1 rounded-full text-xs uppercase font-bold border border-slate-700">
-                 {profile?.is_tutor ? 'Tutor Dashboard' : 'Student Dashboard'}
-               </span>
-             </div>
+             <div className="bg-blue-600 w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold border-2 border-yellow-400">{profile?.full_name?.[0] || 'U'}</div>
+             <div><h1 className="text-2xl font-bold">{profile?.full_name || 'User'}</h1><span className="bg-slate-800 text-slate-400 px-3 py-1 rounded-full text-xs uppercase font-bold border border-slate-700">{profile?.is_tutor ? 'Tutor Dashboard' : 'Student Dashboard'}</span></div>
           </div>
           <div className="flex items-center gap-4">
              {profile?.is_tutor && (
-               <button onClick={toggleOnline} className={`px-6 py-3 rounded-full font-bold flex items-center gap-2 transition shadow-lg ${tutorData?.is_online ? 'bg-green-500 text-black hover:bg-green-400 shadow-green-500/20' : 'bg-slate-700 text-slate-400 hover:bg-slate-600'}`}>
+               <button onClick={toggleOnline} className={`px-6 py-3 rounded-full font-bold flex items-center gap-2 transition shadow-lg ${tutorData?.is_online ? 'bg-green-500 text-black' : 'bg-slate-700 text-slate-400'}`}>
                  <Zap fill={tutorData?.is_online ? "black" : "currentColor"} size={20} />
                  {tutorData?.is_online ? 'ONLINE' : 'OFFLINE'}
                </button>
@@ -306,7 +349,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* --- STATS GRID (RESTORED) --- */}
+        {/* --- STATS GRID --- */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <StatCard icon={<Calendar />} label="Total Bookings" value={bookings.length} />
           {profile?.is_tutor ? (
@@ -322,37 +365,39 @@ export default function Dashboard() {
           )}
         </div>
 
-        {/* --- STRIPE PAYMENT SETUP (TUTORS ONLY) --- */}
+        {/* --- BANK DETAILS FORM (Simple Manual Payout) --- */}
         {profile?.is_tutor && !tutorData?.payouts_enabled && (
-           <div className="mb-6 bg-red-500/10 border border-red-500/50 p-6 rounded-2xl flex flex-col md:flex-row items-center justify-between gap-4">
-             <div>
-               <h3 className="text-red-400 font-bold text-lg flex items-center gap-2"><DollarSign /> Payouts Not Active</h3>
-               <p className="text-slate-300 text-sm">You cannot receive money yet. Connect your bank account to start.</p>
+           <div className="mb-6 bg-slate-800 border border-slate-700 p-6 rounded-2xl">
+             <div className="flex items-center gap-2 mb-4 text-white">
+                <Banknote className="text-green-400" />
+                <h3 className="font-bold text-lg">Add Bank Details (To Receive Payments)</h3>
              </div>
-             <button 
-               onClick={async (e) => {
-                  const btn = e.currentTarget;
-                  btn.innerText = "Redirecting...";
-                  btn.disabled = true;
-                  try {
-                    const res = await fetch('/api/stripe/onboard', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ userId: profile.id, email: profile.email })
-                    });
-                    const data = await res.json();
-                    if (!res.ok) throw new Error(data.error);
-                    if (data.url) window.location.href = data.url;
-                  } catch (error: any) {
-                    alert("Setup Failed: " + error.message);
-                    btn.innerText = "Setup Payouts (Stripe)";
-                    btn.disabled = false;
-                  }
-               }}
-               className="bg-red-600 hover:bg-red-500 text-white font-bold py-3 px-6 rounded-xl w-full md:w-auto"
-             >
-               Setup Payouts (Stripe)
-             </button>
+             <form onSubmit={handleSaveBank} className="flex flex-col md:flex-row gap-4 items-end">
+                <div className="w-full">
+                    <label className="text-xs text-slate-400 font-bold uppercase mb-1 block">Bank Name</label>
+                    <select 
+                        className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-green-500 outline-none"
+                        value={bankName}
+                        onChange={(e) => setBankName(e.target.value)}
+                    >
+                        {BANKS.map(b => <option key={b.code} value={b.name}>{b.name}</option>)}
+                    </select>
+                </div>
+                <div className="w-full">
+                    <label className="text-xs text-slate-400 font-bold uppercase mb-1 block">Account Number</label>
+                    <input 
+                        type="text" 
+                        className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-green-500 outline-none"
+                        placeholder="1234567890"
+                        value={accNumber}
+                        onChange={(e) => setAccNumber(e.target.value)}
+                        required
+                    />
+                </div>
+                <button className="bg-green-600 hover:bg-green-500 text-white font-bold py-3 px-6 rounded-xl w-full md:w-auto">
+                    Save Details
+                </button>
+             </form>
            </div>
         )}
 
@@ -498,6 +543,18 @@ export default function Dashboard() {
                                 )}
                             </div>
                           )}
+
+                          {/* VALIDATION BUTTONS */}
+                          {isLessonFinished(booking) && booking.status === 'confirmed' && (
+                             <div className="mt-2 p-3 bg-blue-900/20 border border-blue-500/30 rounded-lg animate-fade-in">
+                                <p className="text-xs text-blue-200 font-bold mb-2">Lesson finished?</p>
+                                {!profile?.is_tutor ? (
+                                   <button onClick={() => setRatingModal(booking)} className="bg-yellow-400 text-black text-xs font-bold px-3 py-1.5 rounded-lg">Rate Tutor & Close</button>
+                                ) : (
+                                   <button onClick={() => markComplete(booking.id)} className="bg-slate-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg">Mark Complete</button>
+                                )}
+                             </div>
+                          )}
                        </div>
                      </div>
                    </div>
@@ -508,8 +565,8 @@ export default function Dashboard() {
                      </span>
                      {profile?.is_tutor && booking.status === 'pending' && (
                         <div className="flex gap-2">
-                          <button onClick={() => handleBookingAction(booking, 'confirmed')} className="bg-green-600 hover:bg-green-500 text-white p-2 rounded-lg" title="Accept"><Check size={20} /></button>
-                          <button onClick={() => handleBookingAction(booking, 'rejected')} className="bg-red-600 hover:bg-red-500 text-white p-2 rounded-lg" title="Reject"><XIcon size={20} /></button>
+                          <button onClick={() => handleBookingAction(booking.id, 'confirmed')} className="bg-green-600 hover:bg-green-500 text-white p-2 rounded-lg" title="Accept"><Check size={20} /></button>
+                          <button onClick={() => handleBookingAction(booking.id, 'rejected')} className="bg-red-600 hover:bg-red-500 text-white p-2 rounded-lg" title="Reject"><XIcon size={20} /></button>
                         </div>
                      )}
                      {!profile?.is_tutor && (
@@ -524,6 +581,26 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+      
+      {/* RATING MODAL */}
+      {ratingModal && (
+        <div className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4">
+            <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700 w-full max-w-sm text-center">
+            <h3 className="text-xl font-bold mb-4">Rate Tutor</h3>
+            <div className="flex justify-center gap-2 mb-6">
+                {[1, 2, 3, 4, 5].map((s) => (
+                <button key={s} onClick={() => setStars(s)}>
+                    <Star size={32} fill={s <= stars ? "#facc15" : "none"} className={s <= stars ? "text-yellow-400" : "text-slate-600"} />
+                </button>
+                ))}
+            </div>
+            <textarea className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white mb-4" placeholder="How was the lesson?" onChange={(e) => setComment(e.target.value)} />
+            <button onClick={submitReview} className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl">Submit & Finish</button>
+            <button onClick={() => setRatingModal(null)} className="mt-4 text-slate-500 text-xs hover:text-white">Cancel</button>
+            </div>
+        </div>
+      )}
+
     </div>
   );
 }
