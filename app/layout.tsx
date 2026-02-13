@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "TutBuddy | Master Your Modules",
+  title: "TutBuddy",
   description: "Find the best university tutors instantly.",
 };
 
