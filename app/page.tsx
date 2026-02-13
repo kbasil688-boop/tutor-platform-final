@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { BookOpen, Video, Users, Star, CheckCircle, GraduationCap, Heart } from 'lucide-react';
+import { BookOpen, Video, Users, Star, CheckCircle, GraduationCap } from 'lucide-react';
 import { supabase } from './lib/supabaseClient';
 
 export default function Home() {
@@ -162,7 +162,6 @@ export default function Home() {
            
            <div className="flex-1 relative">
               <div className="absolute -inset-4 bg-yellow-400/20 blur-xl rounded-full"></div>
-              {/* IMAGE: Pointing to your local file in /public/tutor-real.jpg */}
               <img 
                 src="/tutor-real.jpg" 
                 alt="Student on video call taking notes" 
@@ -208,8 +207,11 @@ export default function Home() {
 
       {/* --- COPYRIGHT FOOTER --- */}
       <footer className="border-t border-slate-800 py-10 text-center bg-slate-950 px-4">
-        <div className="flex items-center justify-center gap-2 mb-4 text-slate-500">
-           
+        <div className="flex items-center justify-center gap-6 mb-4 text-slate-500 text-sm font-medium">
+          {/* Added Link Here */}
+          <Link href="/legal" className="hover:text-yellow-400 transition-colors">
+            Terms & Refunds
+          </Link>
         </div>
         <p className="text-slate-500 text-xs md:text-sm">
           © {new Date().getFullYear()} TutBuddy. All Rights Reserved.
