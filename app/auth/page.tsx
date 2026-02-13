@@ -3,15 +3,7 @@
 import React, { useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useRouter } from 'next/navigation';
-import { Mail, Lock, Loader2, ArrowRight, User, GraduationCap, School, CheckSquare, Languages, Eye, EyeOff, Linkedin } from 'lucide-react'; // Added Linkedin
-
-const PRESET_QUESTIONS = [
-  "What is your 'Superpower' as a tutor?",
-  "Describe your teaching style in 3 words.",
-  "How do you simplify a topic that a student is completely stuck on?",
-  "What can a student expect to achieve after their first 5 sessions with you?",
-  "Give us a fun fact about you."
-];
+import { Mail, Lock, Loader2, ArrowRight, User, GraduationCap, School, Languages, Eye, EyeOff, BookOpen, Linkedin } from 'lucide-react';
 
 export default function AuthPage() {
   const router = useRouter();
@@ -20,8 +12,6 @@ export default function AuthPage() {
   const [role, setRole] = useState<'student' | 'tutor'>('student');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ text: string, type: 'error' | 'success' } | null>(null);
-  
-  // State
   const [showPassword, setShowPassword] = useState(false);
   const [confirmationSent, setConfirmationSent] = useState(false);
 
@@ -34,27 +24,12 @@ export default function AuthPage() {
   const [subject, setSubject] = useState('');
   const [price, setPrice] = useState('');
   const [languageStr, setLanguageStr] = useState('');
-  const [linkedin, setLinkedin] = useState(''); // NEW: LinkedIn State
-  
-  // Q&A
-  const [selectedIndices, setSelectedIndices] = useState<number[]>([]);
-  const [answers, setAnswers] = useState<{[key: number]: string}>({});
-
-  const toggleQuestion = (index: number) => {
-    if (selectedIndices.includes(index)) {
-      setSelectedIndices(selectedIndices.filter(i => i !== index));
-      const newAnswers = { ...answers };
-      delete newAnswers[index];
-      setAnswers(newAnswers);
-    } else {
-      if (selectedIndices.length < 3) setSelectedIndices([...selectedIndices, index]);
-      else alert("You can only choose 3 questions!");
-    }
-  };
+  const [linkedin, setLinkedin] = useState('');
+  const [aboutMe, setAboutMe] = useState(''); // NEW: Replaces the 3 questions
 
   const handleResetPassword = async () => {
     if (!email) {
-      setMessage({ text: "Please enter your email address first.", type: 'error' });
+      setMessage({ text: "Please enter your email first.", type: 'error' });
       return;
     }
     setLoading(true);
@@ -73,25 +48,19 @@ export default function AuthPage() {
 
     try {
       if (isSignUp) {
-        if (role === 'tutor' && selectedIndices.length !== 3) {
-          throw new Error("Please select and answer exactly 3 profile questions.");
-        }
-
-        const formattedQA = selectedIndices.map(index => ({
-          question: PRESET_QUESTIONS[index],
-          answer: answers[index]
-        }));
-
+        
+        // 1. Prepare Metadata
         const metaData = {
           full_name: fullName,
           is_tutor: role === 'tutor',
           subject: subject,
           price: price,
           languages: languageStr,
-          linkedin_link: linkedin, // NEW: Sending LinkedIn to DB
-          custom_questions: formattedQA
+          linkedin_link: linkedin,
+          bio: aboutMe // Save "About Me" directly to bio
         };
 
+        // 2. Send Signup
         const { error: authError } = await supabase.auth.signUp({ 
           email, 
           password,
@@ -121,7 +90,7 @@ export default function AuthPage() {
         router.push('/dashboard');
       }
     } catch (error: any) {
-      if (error.message === "Failed to fetch") setMessage({ text: "Network error. Please check your internet connection.", type: 'error' });
+      if (error.message === "Failed to fetch") setMessage({ text: "Network error. Check internet.", type: 'error' });
       else setMessage({ text: error.message, type: 'error' });
     } finally {
       setLoading(false);
@@ -139,7 +108,9 @@ export default function AuthPage() {
            <p className="text-slate-300 mb-8 leading-relaxed">
              We have sent a verification link to <span className="text-white font-bold">{email}</span>.
              <br/><br/>
-             Please click the link to activate your account and start your journey with TutBuddy!
+             Please click the link to activate your account.
+             <br/>
+             <span className="text-xs text-slate-500">(Check Spam folder if you don't see it)</span>
            </p>
            <button onClick={() => window.location.reload()} className="text-slate-500 hover:text-white underline text-sm">Back to Login</button>
         </div>
@@ -214,6 +185,7 @@ export default function AuthPage() {
             )}
           </div>
 
+          {/* --- NEW TUTOR FORM (Simplified) --- */}
           {isSignUp && role === 'tutor' && (
             <div className="space-y-4 pt-4 border-t border-slate-700">
               <p className="text-yellow-400 text-sm font-bold text-center">Build Profile</p>
@@ -233,33 +205,22 @@ export default function AuthPage() {
                 <label className="block text-slate-400 text-xs uppercase font-bold mb-2 flex items-center gap-1"><Languages size={14}/> Languages (Comma separated)</label>
                 <input type="text" required className="w-full bg-slate-900 border border-slate-700 rounded-xl py-3 px-4 text-white focus:border-yellow-400 outline-none" placeholder="e.g. English, Zulu, Xhosa" value={languageStr} onChange={(e) => setLanguageStr(e.target.value)} />
               </div>
-
-              {/* --- NEW: LINKEDIN INPUT --- */}
+              
               <div>
-                <label className="block text-slate-400 text-xs uppercase font-bold mb-2 flex items-center gap-1"><Linkedin size={14}/> LinkedIn Profile (Optional but useful)</label>
-                <input type="text" className="w-full bg-slate-900 border border-slate-700 rounded-xl py-3 px-4 text-white focus:border-yellow-400 outline-none" placeholder="https://linkedin.com/in/yourname" value={linkedin} onChange={(e) => setLinkedin(e.target.value)} />
+                <label className="block text-slate-400 text-xs uppercase font-bold mb-2 flex items-center gap-1"><Linkedin size={14}/> LinkedIn (Optional)</label>
+                <input type="text" className="w-full bg-slate-900 border border-slate-700 rounded-xl py-3 px-4 text-white focus:border-yellow-400 outline-none" placeholder="https://linkedin.com/in/..." value={linkedin} onChange={(e) => setLinkedin(e.target.value)} />
               </div>
 
-              <div className="bg-slate-900 p-4 rounded-xl border border-slate-700">
-                <p className="text-white text-xs font-bold mb-4 flex items-center justify-between">
-                   <span>Select 3 Questions to Answer:</span>
-                   <span className={selectedIndices.length === 3 ? "text-green-400" : "text-slate-500"}>{selectedIndices.length}/3</span>
-                </p>
-                <div className="space-y-3">
-                  {PRESET_QUESTIONS.map((q, index) => (
-                    <div key={index} className="space-y-2">
-                      <div onClick={() => toggleQuestion(index)} className={`flex items-start gap-3 p-2 rounded-lg cursor-pointer transition ${selectedIndices.includes(index) ? 'bg-blue-900/30' : 'hover:bg-slate-800'}`}>
-                        <div className={`mt-0.5 w-4 h-4 rounded border flex items-center justify-center ${selectedIndices.includes(index) ? 'bg-blue-500 border-blue-500' : 'border-slate-500'}`}>
-                          {selectedIndices.includes(index) && <CheckSquare size={10} className="text-white"/>}
-                        </div>
-                        <span className={`text-xs ${selectedIndices.includes(index) ? 'text-white font-bold' : 'text-slate-400'}`}>{q}</span>
-                      </div>
-                      {selectedIndices.includes(index) && (
-                        <textarea className="w-full bg-black/20 border border-slate-600 rounded-lg p-2 text-white text-sm focus:border-blue-500 outline-none h-16 ml-7 w-[calc(100%-1.75rem)]" placeholder="Type your answer here..." value={answers[index] || ''} onChange={(e) => setAnswers({...answers, [index]: e.target.value})} required />
-                      )}
-                    </div>
-                  ))}
-                </div>
+              {/* NEW: ABOUT ME (Replaces the 3 Questions) */}
+              <div>
+                <label className="block text-slate-400 text-xs uppercase font-bold mb-2 flex items-center gap-1"><BookOpen size={14}/> About Me / Teaching Style</label>
+                <textarea 
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl py-3 px-4 text-white focus:border-yellow-400 outline-none h-32" 
+                  placeholder="Describe yourself, how you teach, and why students should pick you..." 
+                  value={aboutMe} 
+                  onChange={(e) => setAboutMe(e.target.value)}
+                  required
+                />
               </div>
             </div>
           )}

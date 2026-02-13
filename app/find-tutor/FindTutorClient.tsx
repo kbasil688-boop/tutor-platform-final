@@ -5,7 +5,7 @@ import { Search, Star, Clock, Zap, Calendar, ArrowLeft, X, Video, User, RotateCc
 import Link from 'next/link';
 import { supabase } from '../lib/supabaseClient';
 import { useRouter } from 'next/navigation';
-import Script from 'next/script'; // Import Script
+import Script from 'next/script'; 
 
 export default function FindTutorClient() {
   const [guestEmails, setGuestEmails] = useState("");
@@ -43,16 +43,26 @@ export default function FindTutorClient() {
     setTutorLessons(data || []);
   };
 
-  // --- 2. PAYSTACK POPUP LOGIC (FIXED) ---
+  // --- 2. PAYSTACK POPUP LOGIC ---
   const payWithPaystack = async (type: 'live' | 'scheduled') => {
     const { data: { user } } = await supabase.auth.getUser();
 
-    // Validation
-    if (!user) {
+    // --- DEBUGGING: CHECK THE KEY ---
+    const publicKey = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY;
+    console.log("PAYSTACK KEY:", publicKey); // Look for this in console
+    console.log("USER EMAIL:", user?.email);
+
+    if (!publicKey) {
+      alert("ERROR: Paystack Public Key is missing! Check Vercel Environment Variables.");
+      return;
+    }
+
+    if (!user || !user.email) {
       alert("Please login to book a tutor!");
       router.push('/auth');
       return;
     }
+
     if (type === 'scheduled' && !scheduleDate) {
       alert("Please select a date and time!");
       return;
@@ -62,23 +72,19 @@ export default function FindTutorClient() {
       return;
     }
 
-    // Check if Paystack loaded
     if (typeof window === 'undefined' || !(window as any).PaystackPop) {
-      alert("Payment system still loading... please wait 2 seconds and try again.");
+      alert("Payment system loading... please wait 2 seconds.");
       return;
     }
 
-    // Dynamic Price Calculation
     const amountInCents = (bookingTutor.price_per_hour || 150) * 100;
 
-    // FIX: Use .setup() instead of new()
     const handler = (window as any).PaystackPop.setup({
-      key: process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY, 
+      key: publicKey, // Using the variable we checked above
       email: user.email,
       amount: amountInCents, 
       currency: 'ZAR',
       callback: (response: any) => { 
-        // Payment Success!
         completeBooking(user, type, response.reference);
       },
       onClose: () => {
@@ -86,7 +92,6 @@ export default function FindTutorClient() {
       }
     });
 
-    // Open the popup
     handler.openIframe();
   };
 
