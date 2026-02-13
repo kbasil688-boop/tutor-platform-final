@@ -325,7 +325,7 @@ export default function Dashboard() {
         <Link href="/" className="inline-block group cursor-pointer">
           <div className="flex items-center gap-2">
             <div className="bg-yellow-400/10 p-2 rounded-lg border border-yellow-400/20"><GraduationCap className="text-yellow-400" size={24} /></div>
-            <h1 className="text-xl font-extrabold tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-orange-500">TUT<span className="text-white">BUDDY</span></h1>
+            <h1 className="text-xl font-extrabold tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-orange-500">Tut<span className="text-white">Buddy</span></h1>
           </div>
         </Link>
       </div>

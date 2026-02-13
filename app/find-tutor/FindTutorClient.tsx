@@ -188,13 +188,9 @@ export default function FindTutorClient() {
                   </div>
                 </div>
 
-                
-                  <div className="flex gap-2 flex-wrap">
-                    {tutor.tags && tutor.tags.map((tag: string) => (
-                      <span key={tag} className="text-xs bg-slate-900 text-slate-400 px-2 py-1 rounded-md border border-slate-700">{tag}</span>
-                    ))}
-                  </div>
                
+                 
+                
 
                 <div className="flex flex-col gap-2 border-t border-slate-700 pt-4">
                    <div className="flex justify-between items-center mb-2">
