@@ -14,7 +14,7 @@ export default function Dashboard() {
   const [uploadingFile, setUploadingFile] = useState(false);
   const router = useRouter();
 
-  // --- BANK FORM STATE (SIMPLE) ---
+  // --- BANK FORM STATE ---
   const [bankName, setBankName] = useState('Capitec Bank');
   const [accNumber, setAccNumber] = useState('');
 
@@ -58,7 +58,6 @@ export default function Dashboard() {
       setTutorData(tData);
 
       if (tData) {
-        // Load existing bank details
         if(tData.bank_name) setBankName(tData.bank_name);
         if(tData.account_number) setAccNumber(tData.account_number);
 
@@ -96,12 +95,32 @@ export default function Dashboard() {
       }
     }
     
-    // FILTER LOGIC
+    checkExpiredRefunds(fetchedBookings);
+
+    // --- FILTER LOGIC (CLEAN DASHBOARD) ---
     const now = new Date();
     const cleanBookings = fetchedBookings.filter((b: any) => {
-      // Hide rejected/cancelled immediately
-      if (b.status === 'rejected' || b.status === 'cancelled') return false;
       
+      // 1. Hide Cancelled immediately
+      if (b.status === 'cancelled') return false;
+
+      // 2. Rejected/No-Show Logic: Hide for Tutors instantly, keep for Students for 24 hours
+      if (b.status === 'rejected') {
+          if (profileData?.is_tutor) return false;
+          const sessionTime = new Date(b.scheduled_time || b.created_at);
+          const studentCutoff = new Date(sessionTime.getTime() + (24 * 60 * 60 * 1000));
+          if (now > studentCutoff) return false;
+      }
+      
+      // 3. Completed Logic: Hide for Tutors instantly, keep for Students for 24 hours to review
+      if (b.status === 'completed') {
+          if (profileData?.is_tutor) return false;
+          const sessionTime = new Date(b.scheduled_time || b.created_at);
+          const studentCutoff = new Date(sessionTime.getTime() + (24 * 60 * 60 * 1000));
+          if (now > studentCutoff) return false;
+      }
+
+      // 4. Pending Expiry
       if (b.status === 'pending') {
          const bookingTime = new Date(b.scheduled_time || b.created_at);
          const expiryTime = b.booking_type === 'live' 
@@ -110,11 +129,14 @@ export default function Dashboard() {
 
          if (now > expiryTime) return false; 
       }
-      // Hide confirmed bookings 2 hours after start
+
+      // 5. Confirmed Expiry
       if (b.status === 'confirmed') {
-          const startTime = new Date(b.scheduled_time || b.created_at);
-          if (now > new Date(startTime.getTime() + 120 * 60000)) return false;
+         const scheduledTime = new Date(b.scheduled_time || b.created_at);
+         const finishTime = new Date(scheduledTime.getTime() + 90 * 60000); 
+         if (now > finishTime) return false;
       }
+
       return true;
     });
 
@@ -129,56 +151,92 @@ export default function Dashboard() {
 
   // --- ACTIONS ---
 
-  // 1. SAVE BANK DETAILS (MANUAL)
+  const handleStudentNoShow = async (booking: any) => {
+    if (!confirm("Confirm Student No-Show? This will end the session and refund the student 50% only.")) return;
+
+    const totalCents = (tutorData?.price_per_hour || 150) * 100;
+    const halfRefund = Math.floor(totalCents * 0.5);
+
+    try {
+        const res = await fetch('/api/paystack/refund', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ reference: booking.payment_intent_id, amount: halfRefund })
+        });
+
+        if (!res.ok) throw new Error("Paystack partial refund failed");
+
+        await supabase.from('bookings').update({ 
+            status: 'rejected', 
+            payment_status: 'partial_refund',
+            rejection_reason: 'no_show' 
+        }).eq('id', booking.id);
+
+        await supabase.from('reported_issues').insert([{
+            booking_id: booking.id,
+            student_id: booking.student_id,
+            issue_description: 'Student No-Show (Penalty Applied)',
+            status: 'resolved'
+        }]);
+
+        alert("Action processed. Student penalized 50%.");
+        refreshData();
+    } catch (err: any) {
+        alert("Action failed: " + err.message);
+    }
+  };
+
+  const checkExpiredRefunds = async (bookingsList: any[]) => {
+    const now = new Date();
+    bookingsList.forEach(async (b) => {
+        if (b.status === 'pending' && b.payment_status === 'paid') {
+            const createdTime = new Date(b.created_at);
+            const scheduledTime = new Date(b.scheduled_time);
+            let isExpired = false;
+
+            if (b.booking_type === 'live') {
+                if (now > new Date(createdTime.getTime() + 15 * 60000)) isExpired = true;
+            } else {
+                if (now > new Date(scheduledTime.getTime() + 120 * 60000)) isExpired = true;
+            }
+
+            if (isExpired) {
+                await fetch('/api/paystack/refund', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ reference: b.payment_intent_id })
+                });
+                await supabase.from('bookings').update({ status: 'cancelled', payment_status: 'refunded' }).eq('id', b.id);
+            }
+        }
+    });
+  };
+
   const handleSaveBank = async (e: React.FormEvent) => {
     e.preventDefault();
     if(!accNumber) return;
-
     const { error } = await supabase.from('tutors').update({
         bank_name: bankName,
         account_number: accNumber,
         payouts_enabled: true
     }).eq('id', tutorData.id);
-
-    if(error) {
-        alert("Error saving bank details: " + error.message);
-    } else {
-        alert("Bank details saved! We will use this for manual payouts.");
-        refreshData();
-    }
+    if(error) alert("Error saving: " + error.message);
+    else { alert("Bank details saved!"); refreshData(); }
   };
 
   const handleTranscriptUpload = async (event: any) => {
     const file = event.target.files[0];
     if (!file) return;
-
     setUploadingFile(true);
     const fileExt = file.name.split('.').pop();
     const cleanName = profile.full_name.replace(/[^a-zA-Z0-9]/g, '_'); 
     const fileName = `${cleanName}-${tutorData.id}-transcript.${fileExt}`;
     const filePath = `${fileName}`;
-
-    const { error: uploadError } = await supabase.storage
-      .from('transcripts')
-      .upload(filePath, file, { upsert: true });
-
-    if (uploadError) {
-      alert("Upload failed: " + uploadError.message);
-      setUploadingFile(false);
-      return;
-    }
-
-    const { error: dbError } = await supabase
-      .from('tutors')
-      .update({ verification_status: 'pending' })
-      .eq('id', tutorData.id);
-
-    if (dbError) {
-      alert("Database error: " + dbError.message);
-    } else {
-      alert("Transcript uploaded! We will review it shortly.");
-      refreshData();
-    }
+    const { error: uploadError } = await supabase.storage.from('transcripts').upload(filePath, file, { upsert: true });
+    if (uploadError) { alert("Upload failed: " + uploadError.message); setUploadingFile(false); return; }
+    await supabase.from('tutors').update({ verification_status: 'pending' }).eq('id', tutorData.id);
+    alert("Transcript uploaded!");
+    refreshData();
     setUploadingFile(false);
   };
 
@@ -196,7 +254,7 @@ export default function Dashboard() {
 
     if (action === 'confirmed') {
       const rawLink = prompt("Please enter Zoom/Google Meet link:");
-      if (!rawLink) return;
+      if (!rawLink) return; 
       link = rawLink.trim();
     } 
     
@@ -204,7 +262,6 @@ export default function Dashboard() {
       if (!confirm("Are you sure? This will refund the student.")) return;
       reason = "Tutor unavailable.";
       
-      // Refund Logic
       if (booking.payment_status === 'paid' && booking.payment_intent_id) {
           try {
              await fetch('/api/paystack/refund', {
@@ -224,10 +281,11 @@ export default function Dashboard() {
   };
 
   const handleCancelBooking = async (booking: any) => {
-    if (confirm("Remove this booking? This will cancel the session.")) {
-        
-        // Refund Logic
-        if (booking.payment_status === 'paid' && booking.payment_intent_id) {
+    const isRejected = booking.status === 'rejected';
+    const msg = isRejected ? "Remove this notice from your dashboard?" : "Remove this booking? This will cancel the session.";
+    
+    if (confirm(msg)) {
+        if (!isRejected && booking.payment_status === 'paid' && booking.payment_intent_id) {
             alert("Processing refund...");
             try {
                 const res = await fetch('/api/paystack/refund', {
@@ -235,16 +293,14 @@ export default function Dashboard() {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ reference: booking.payment_intent_id })
                 });
-                const data = await res.json();
-                if (!res.ok) throw new Error(data.error);
+                if (!res.ok) throw new Error("Refund API failed");
                 alert("Refund initiated! Funds return in 3-5 days.");
             } catch (err: any) {
                 alert("Refund failed: " + err.message);
                 return;
             }
         }
-
-      await supabase.from('bookings').delete().eq('id', booking.id);
+      await supabase.from('bookings').update({ status: 'cancelled' }).eq('id', booking.id);
       refreshData();
     }
   };
@@ -256,9 +312,7 @@ export default function Dashboard() {
   };
 
   const uploadLesson = async (title: string, url: string) => {
-    const { error } = await supabase.from('lessons').insert([
-        { tutor_id: tutorData.user_id, title: title, video_url: url }
-    ]);
+    const { error } = await supabase.from('lessons').insert([{ tutor_id: tutorData.user_id, title: title, video_url: url }]);
     if (error) alert("Error: " + error.message);
     else alert("Lesson Uploaded!");
   }
@@ -276,12 +330,18 @@ export default function Dashboard() {
     alert("Link copied! Send it to your group.");
   };
 
+  const isNoShowEligible = (booking: any) => {
+    if (booking.status !== 'confirmed') return false;
+    const lessonTime = new Date(booking.scheduled_time || booking.created_at);
+    const fifteenMinsLater = new Date(lessonTime.getTime() + 15 * 60000); 
+    return new Date() > fifteenMinsLater; 
+  };
+
   const isLessonFinished = (booking: any) => {
     if (booking.status !== 'confirmed') return false;
     const lessonTime = new Date(booking.scheduled_time || booking.created_at);
     const oneHourLater = new Date(lessonTime.getTime() + 60 * 60000); 
-    const now = new Date();
-    return now > oneHourLater; 
+    return new Date() > oneHourLater; 
   };
 
   const submitReview = async () => {
@@ -292,20 +352,28 @@ export default function Dashboard() {
         rating: stars,
         comment: comment
     }]);
-
-    if (error) {
-        alert("Error: " + error.message);
-    } else {
+    if (error) alert("Error: " + error.message);
+    else {
         await supabase.from('bookings').update({ status: 'completed' }).eq('id', ratingModal.id);
-        alert("Review Submitted! Session Closed.");
+        alert("Review Submitted!");
         setRatingModal(null);
         refreshData();
     }
   };
 
   const markComplete = async (bookingId: number) => {
+      if(!confirm("Confirm lesson was successful? This will trigger your payout process.")) return;
       await supabase.from('bookings').update({ status: 'completed' }).eq('id', bookingId);
       refreshData();
+  };
+
+  const reportIssue = async (bookingId: number) => {
+      const issue = prompt("Please describe the issue (e.g. Tutor No Show):");
+      if (issue) {
+          await supabase.from('bookings').update({ status: 'disputed', rejection_reason: issue }).eq('id', bookingId);
+          alert("Issue Reported. Support will contact you shortly.");
+          refreshData();
+      }
   };
 
   const getStatusColor = (status: string) => {
@@ -325,7 +393,7 @@ export default function Dashboard() {
         <Link href="/" className="inline-block group cursor-pointer">
           <div className="flex items-center gap-2">
             <div className="bg-yellow-400/10 p-2 rounded-lg border border-yellow-400/20"><GraduationCap className="text-yellow-400" size={24} /></div>
-            <h1 className="text-xl font-extrabold tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-orange-500">Tut<span className="text-white">Buddy</span></h1>
+            <h1 className="text-xl font-extrabold tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-orange-500">TUT<span className="text-white">BUDDY</span></h1>
           </div>
         </Link>
       </div>
@@ -337,160 +405,50 @@ export default function Dashboard() {
              <div><h1 className="text-2xl font-bold">{profile?.full_name || 'User'}</h1><span className="bg-slate-800 text-slate-400 px-3 py-1 rounded-full text-xs uppercase font-bold border border-slate-700">{profile?.is_tutor ? 'Tutor Dashboard' : 'Student Dashboard'}</span></div>
           </div>
           <div className="flex items-center gap-4">
-             {profile?.is_tutor && (
-               <button onClick={toggleOnline} className={`px-6 py-3 rounded-full font-bold flex items-center gap-2 transition shadow-lg ${tutorData?.is_online ? 'bg-green-500 text-black' : 'bg-slate-700 text-slate-400'}`}>
-                 <Zap fill={tutorData?.is_online ? "black" : "currentColor"} size={20} />
-                 {tutorData?.is_online ? 'ONLINE' : 'OFFLINE'}
-               </button>
-             )}
-             <button onClick={handleLogout} className="text-red-400 hover:text-red-300 transition font-bold border border-slate-700 px-4 py-3 rounded-full hover:bg-slate-800">
-               <LogOut size={16} />
-             </button>
+             {profile?.is_tutor && <button onClick={toggleOnline} className={`px-6 py-3 rounded-full font-bold flex items-center gap-2 transition shadow-lg ${tutorData?.is_online ? 'bg-green-500 text-black' : 'bg-slate-700 text-slate-400'}`}><Zap size={20}/>{tutorData?.is_online ? 'ONLINE' : 'OFFLINE'}</button>}
+             <button onClick={() => window.location.reload()} className="bg-slate-800 p-3 rounded-full hover:bg-slate-700 text-slate-400" title="Refresh Data"><RotateCcw size={16}/></button>
+             <button onClick={handleLogout} className="text-red-400 font-bold border border-slate-700 px-4 py-3 rounded-full"><LogOut size={16} /></button>
           </div>
         </div>
 
-        {/* --- STATS GRID --- */}
+        {/* --- STATS GRID (MOVED TO TOP) --- */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <StatCard icon={<Calendar />} label="Total Bookings" value={bookings.length} />
-          {profile?.is_tutor ? (
-             <>
-               <StatCard icon={<Check />} label="Confirmed Sessions" value={bookings.filter(b => b.status === 'confirmed').length} color="text-green-400" />
-               <StatCard icon={<DollarSign />} label="Potential Earnings" value={`R ${bookings.filter(b => b.status !== 'rejected').length * (tutorData?.price_per_hour || 0)}`} color="text-yellow-400" />
-             </>
-          ) : (
-             <>
-               <StatCard icon={<Clock />} label="Pending" value={bookings.filter(b => b.status === 'pending').length} color="text-yellow-400" />
-               <StatCard icon={<Check />} label="Confirmed" value={bookings.filter(b => b.status === 'confirmed').length} color="text-green-400" />
-             </>
-          )}
+            <StatCard icon={<Calendar />} label="Total Bookings" value={bookings.length} />
+            {profile?.is_tutor ? (
+               <>
+                 <StatCard icon={<Check />} label="Confirmed Sessions" value={bookings.filter(b => b.status === 'confirmed').length} color="text-green-400" />
+                 <StatCard icon={<DollarSign />} label="Potential Earnings" value={`R ${bookings.filter(b => b.status !== 'rejected').length * (tutorData?.price_per_hour || 0)}`} color="text-yellow-400" />
+               </>
+            ) : (
+               <>
+                 <StatCard icon={<Clock />} label="Pending" value={bookings.filter(b => b.status === 'pending').length} color="text-yellow-400" />
+                 <StatCard icon={<Check />} label="Confirmed" value={bookings.filter(b => b.status === 'confirmed').length} color="text-green-400" />
+               </>
+            )}
         </div>
 
-        {/* --- BANK DETAILS FORM (Simple Manual Payout) --- */}
         {profile?.is_tutor && !tutorData?.payouts_enabled && (
            <div className="mb-6 bg-slate-800 border border-slate-700 p-6 rounded-2xl">
-             <div className="flex items-center gap-2 mb-4 text-white">
-                <Banknote className="text-green-400" />
-                <h3 className="font-bold text-lg">Add Bank Details (To Receive Payments)</h3>
-             </div>
+             <div className="flex items-center gap-2 mb-4 text-white"><Banknote className="text-green-400" /><h3 className="font-bold text-lg">Add Bank Details</h3></div>
              <form onSubmit={handleSaveBank} className="flex flex-col md:flex-row gap-4 items-end">
-                <div className="w-full">
-                    <label className="text-xs text-slate-400 font-bold uppercase mb-1 block">Bank Name</label>
-                    <select 
-                        className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-green-500 outline-none"
-                        value={bankName}
-                        onChange={(e) => setBankName(e.target.value)}
-                    >
-                        {BANKS.map(b => <option key={b.code} value={b.name}>{b.name}</option>)}
-                    </select>
-                </div>
-                <div className="w-full">
-                    <label className="text-xs text-slate-400 font-bold uppercase mb-1 block">Account Number</label>
-                    <input 
-                        type="text" 
-                        className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-green-500 outline-none"
-                        placeholder="1234567890"
-                        value={accNumber}
-                        onChange={(e) => setAccNumber(e.target.value)}
-                        required
-                    />
-                </div>
-                <button className="bg-green-600 hover:bg-green-500 text-white font-bold py-3 px-6 rounded-xl w-full md:w-auto">
-                    Save Details
-                </button>
+                <div className="w-full"><label className="text-xs text-slate-400 font-bold uppercase mb-1 block">Bank Name</label><select className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white" value={bankName} onChange={(e) => setBankName(e.target.value)}>{BANKS.map(b => <option key={b.code} value={b.name}>{b.name}</option>)}</select></div>
+                <div className="w-full"><label className="text-xs text-slate-400 font-bold uppercase mb-1 block">Account Number</label><input type="text" className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white" placeholder="1234567890" value={accNumber} onChange={(e) => setAccNumber(e.target.value)} required /></div>
+                <button className="bg-green-600 hover:bg-green-500 text-white font-bold py-3 px-6 rounded-xl w-full md:w-auto">Save Details</button>
              </form>
            </div>
         )}
 
-        {/* --- VERIFICATION SECTION (TUTORS ONLY) --- */}
-        {profile?.is_tutor && (
-          <div className="mb-10 bg-slate-800 p-6 rounded-2xl border border-slate-700 relative overflow-hidden">
-             
-             {/* Status: Verified */}
-             {tutorData?.verification_status === 'verified' && (
-                <div className="flex items-center gap-4 text-green-400">
-                   <ShieldCheck size={32} />
-                   <div>
-                      <h3 className="font-bold text-lg">You are a Verified Tutor</h3>
-                      <p className="text-slate-400 text-sm">You have the Blue Badge on your profile.</p>
-                   </div>
-                </div>
-             )}
-
-             {/* Status: Pending */}
-             {tutorData?.verification_status === 'pending' && (
-                <div className="flex items-center gap-4 text-yellow-400">
-                   <Clock size={32} />
-                   <div>
-                      <h3 className="font-bold text-lg">Verification Pending</h3>
-                      <p className="text-slate-400 text-sm">We are reviewing your document. This usually takes 24 hours.</p>
-                   </div>
-                </div>
-             )}
-
-             {/* Status: None/Rejected */}
-             {(!tutorData?.verification_status || tutorData?.verification_status === 'none' || tutorData?.verification_status === 'rejected') && (
-                <div>
-                   <div className="flex items-center gap-2 mb-4">
-                      <ShieldCheck className="text-blue-500" size={24} />
-                      <h3 className="font-bold text-xl text-white">Get Verified</h3>
-                   </div>
-                   <p className="text-slate-300 text-sm mb-4">
-                      Upload your <strong>Academic Transcript</strong> to get a Blue Badge. <br/>
-                      <span className="text-slate-500 text-xs">
-                        (Safety Note: Feel free to crop the image or blur other marks. 
-                        We only need to see your Name, University, and the Subject mark you teach.)
-                      </span>
-                   </p>
-                   
-                   <label className={`cursor-pointer bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-6 rounded-xl flex items-center gap-2 w-fit transition ${uploadingFile ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                      {uploadingFile ? <Clock className="animate-spin" size={20} /> : <Upload size={20} />}
-                      {uploadingFile ? 'Uploading...' : 'Upload Transcript (Image/PDF)'}
-                      <input 
-                        type="file" 
-                        accept="image/*,.pdf" 
-                        className="hidden" 
-                        onChange={handleTranscriptUpload}
-                        disabled={uploadingFile}
-                      />
-                   </label>
-                </div>
-             )}
-          </div>
-        )}
-
-        <div className="mb-10">
-            {profile?.is_tutor ? (
-                <div className="flex gap-4">
-                  <button onClick={handleUploadClick} className="w-full md:w-auto bg-slate-700 hover:bg-slate-600 text-white font-bold py-4 px-8 rounded-xl flex items-center justify-center gap-2 transition">
-                    <PlusCircle size={20} /> Upload Lesson
-                  </button>
-                  <button onClick={() => router.push('/dashboard/edit-profile')} className="bg-slate-700 hover:bg-slate-600 text-white font-bold py-4 px-8 rounded-xl flex items-center justify-center gap-2 transition">
-                    <User size={20} /> Edit Profile
-                  </button>
-                </div>
-            ) : (
-                <button onClick={() => router.push('/find-tutor')} className="w-full bg-yellow-400 hover:bg-yellow-300 text-black font-bold py-4 px-8 rounded-xl flex items-center justify-center gap-2 transition shadow-[0_0_20px_rgba(250,204,21,0.3)] hover:scale-[1.02]">
-                  <Search size={24} /> FIND A TUTOR NOW
-                </button>
-            )}
-        </div>
-
         <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700">
-          <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-            <Bell className="text-yellow-400" /> {profile?.is_tutor ? 'Manage Requests' : 'My Sessions'}
-          </h2>
-
+          <h2 className="text-xl font-bold mb-4 flex items-center gap-2"><Bell className="text-yellow-400" /> {profile?.is_tutor ? 'Manage Requests' : 'My Sessions'}</h2>
+          
           <div className="space-y-4">
-            {bookings.length === 0 ? (
-              <p className="text-slate-500 text-center py-8">No active bookings.</p>
-            ) : (
-              bookings.map((booking) => (
+            {bookings.length === 0 ? <p className="text-slate-500 text-center py-8">No active bookings.</p> : bookings.map((booking) => (
                 <div key={booking.id} className="bg-slate-900 p-5 rounded-xl border border-slate-700 flex flex-col md:flex-row justify-between items-center gap-4 shadow-sm">
                    <div className="flex items-center gap-4 w-full">
-                     <div className={`p-3 rounded-full shrink-0 ${booking.status === 'rejected' ? 'bg-red-500/20 text-red-400' : (booking.booking_type === 'live' ? 'bg-green-500/20 text-green-400' : 'bg-blue-500/20 text-blue-400')}`}>
-                        {booking.status === 'rejected' ? <XIcon size={24}/> : (booking.booking_type === 'live' ? <Zap size={24} /> : <Clock size={24} />)}
+                     <div className={`p-3 rounded-full shrink-0 ${booking.status === 'rejected' ? 'bg-red-500/20 text-red-400' : (booking.status === 'completed' ? 'bg-blue-500/20 text-blue-400' : 'bg-green-500/20 text-green-400')}`}>
+                        {booking.status === 'rejected' ? <XIcon size={24}/> : (booking.status === 'completed' ? <Check size={24}/> : <Clock size={24} />)}
                      </div>
-                     <div>
+                     <div className="w-full">
                        <h3 className="font-bold text-lg text-white">
                          {profile?.is_tutor 
                            ? `Student: ${booking.profiles?.full_name || 'Unknown'}` 
@@ -498,90 +456,93 @@ export default function Dashboard() {
                          }
                        </h3>
                        
-                       {profile?.is_tutor && booking.guest_emails && (
-                         <div className="mt-1 bg-blue-500/10 border border-blue-500/30 p-2 rounded-lg">
-                           <p className="text-xs text-blue-300 font-bold mb-1 flex items-center gap-1"><Users size={12}/> Group Session (+ Guests):</p>
-                           <p className="text-xs text-slate-300 break-all">{booking.guest_emails}</p>
-                         </div>
-                       )}
-
-                       {booking.topic_description && (
-                         <div className="mt-2 mb-2 bg-slate-800 p-3 rounded-lg border-l-4 border-yellow-400">
-                            <p className="text-xs text-slate-400 uppercase font-bold mb-1">Topic Request:</p>
-                            <p className="text-sm text-white italic">"{booking.topic_description}"</p>
-                         </div>
-                       )}
-
-                       {booking.status === 'rejected' && booking.rejection_reason && (
+                       {/* DYNAMIC ALERT MESSAGES FOR STUDENTS */}
+                       {!profile?.is_tutor && booking.status === 'rejected' && (
                          <div className="mt-2 bg-red-500/10 border border-red-500/30 p-3 rounded-lg">
-                            <p className="text-xs text-red-400 uppercase font-bold mb-1 flex items-center gap-1"><AlertCircle size={12}/> Session Declined:</p>
-                            <p className="text-sm text-red-200">"{booking.rejection_reason}"</p>
+                           <p className="text-xs text-red-400 uppercase font-bold mb-1 flex items-center gap-1"><AlertCircle size={12}/> {booking.rejection_reason === 'no_show' ? 'Student No-Show Penalty' : 'Session Declined'}</p>
+                           <p className="text-sm text-red-200 italic">
+                             {booking.rejection_reason === 'no_show' 
+                               ? "You did not join the session within 15 minutes. As per our policy, a 50% penalty was applied and the remaining funds were refunded." 
+                               : "The tutor is unavailable and you have been refunded for that specific booking."}
+                           </p>
                          </div>
                        )}
 
                        <div className="text-slate-400 text-sm flex flex-col gap-1 mt-1">
-                          {booking.booking_type === 'live' ? (
-                            <span className="text-green-400 font-bold">⚡ Live Request</span>
-                          ) : (
-                            <span>📅 {new Date(booking.scheduled_time || booking.created_at).toLocaleString()}</span>
-                          )}
+                          {booking.booking_type === 'live' ? <span className="text-green-400 font-bold">⚡ Live Request</span> : <span>📅 {new Date(booking.scheduled_time || booking.created_at).toLocaleString()}</span>}
                           
-                          {booking.meeting_link && (
+                          {booking.status === 'confirmed' && booking.meeting_link && (
                             <div className="flex flex-col md:flex-row gap-2 mt-1">
-                                <a href={ensureProtocol(booking.meeting_link)} target="_blank" rel="noopener noreferrer" className="bg-green-600 hover:bg-green-500 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 w-fit animate-pulse">
-                                   <Video size={16} /> JOIN CALL
-                                </a>
-                                
-                                {/* COPY LINK (Only for Students) */}
-                                {!profile?.is_tutor && booking.guest_emails && (
-                                  <button 
-                                    onClick={() => copyToClipboard(ensureProtocol(booking.meeting_link))} 
-                                    className="bg-slate-700 hover:bg-slate-600 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 w-fit text-xs"
-                                  >
-                                     <Copy size={16} /> Copy Link for Friends
-                                  </button>
-                                )}
+                                <a href={ensureProtocol(booking.meeting_link)} target="_blank" rel="noopener noreferrer" className="bg-green-600 hover:bg-green-500 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 w-fit animate-pulse"><Video size={16} /> JOIN CALL</a>
+                                {!profile?.is_tutor && booking.guest_emails && <button onClick={() => copyToClipboard(ensureProtocol(booking.meeting_link))} className="bg-slate-700 text-white py-2 px-4 rounded-lg text-xs"><Copy size={16} /> Copy Link</button>}
                             </div>
                           )}
 
-                          {/* VALIDATION BUTTONS */}
-                          {isLessonFinished(booking) && booking.status === 'confirmed' && (
-                             <div className="mt-2 p-3 bg-blue-900/20 border border-blue-500/30 rounded-lg animate-fade-in">
-                                <p className="text-xs text-blue-200 font-bold mb-2">Lesson finished?</p>
-                                {!profile?.is_tutor ? (
-                                   <button onClick={() => setRatingModal(booking)} className="bg-yellow-400 text-black text-xs font-bold px-3 py-1.5 rounded-lg">Rate Tutor & Close</button>
+                          {/* DYNAMIC ACTION BUTTONS (BOTH STAY VISIBLE) */}
+                          {booking.status === 'confirmed' && (
+                             <div className="mt-3 p-3 bg-blue-900/20 border border-blue-500/30 rounded-lg">
+                                {profile?.is_tutor ? (
+                                   <div className="flex flex-col gap-3">
+                                      {/* MARK COMPLETE SECTION */}
+                                      <div>
+                                        <p className="text-xs text-blue-200 font-bold mb-2 uppercase tracking-tight">Session Completion:</p>
+                                        {isLessonFinished(booking) ? (
+                                           <button onClick={() => markComplete(booking.id)} className="bg-slate-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg border border-slate-600">Mark Complete</button>
+                                        ) : (
+                                           <p className="text-[10px] text-slate-500 italic">"Mark Complete" button appears after 60 mins.</p>
+                                        )}
+                                      </div>
+
+                                      {/* NO SHOW SECTION */}
+                                      <div className="pt-3 border-t border-blue-500/10">
+                                        <p className="text-xs text-orange-200 font-bold mb-2 uppercase tracking-tight">Attendance Issue:</p>
+                                        {isNoShowEligible(booking) ? (
+                                          <button onClick={() => handleStudentNoShow(booking)} className="bg-orange-500/20 text-orange-400 text-xs font-bold px-3 py-1.5 rounded-lg border border-orange-500/50 hover:bg-orange-500 hover:text-white transition">Student No-Show (50% Penalty)</button>
+                                        ) : (
+                                          <p className="text-[10px] text-slate-500 italic">"No-Show" button appears after 15 mins.</p>
+                                        )}
+                                      </div>
+                                   </div>
                                 ) : (
-                                   <button onClick={() => markComplete(booking.id)} className="bg-slate-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg">Mark Complete</button>
+                                   isLessonFinished(booking) && (
+                                      <div className="flex flex-col gap-2">
+                                         <p className="text-xs text-blue-200 font-bold">Lesson finished?</p>
+                                         <div className="flex gap-2">
+                                           <button onClick={() => setRatingModal(booking)} className="bg-yellow-400 text-black text-xs font-bold px-3 py-1.5 rounded-lg">Rate Tutor</button>
+                                           <button onClick={() => reportIssue(booking.id)} className="bg-red-500/20 text-red-400 text-xs font-bold px-3 py-1.5 rounded-lg border border-red-500/50">Report Issue</button>
+                                         </div>
+                                      </div>
+                                   )
                                 )}
                              </div>
                           )}
                        </div>
                      </div>
                    </div>
-                   
                    <div className="flex items-center gap-3 w-full md:w-auto justify-end">
-                     <span className={`px-4 py-1.5 rounded-full text-xs font-bold uppercase border ${getStatusColor(booking.status)}`}>
-                       {booking.status}
-                     </span>
+                     <span className={`px-4 py-1.5 rounded-full text-xs font-bold uppercase border ${getStatusColor(booking.status)}`}>{booking.status}</span>
                      {profile?.is_tutor && booking.status === 'pending' && (
                         <div className="flex gap-2">
-                          <button onClick={() => handleBookingAction(booking.id, 'confirmed')} className="bg-green-600 hover:bg-green-500 text-white p-2 rounded-lg" title="Accept"><Check size={20} /></button>
-                          <button onClick={() => handleBookingAction(booking.id, 'rejected')} className="bg-red-600 hover:bg-red-500 text-white p-2 rounded-lg" title="Reject"><XIcon size={20} /></button>
+                          <button onClick={() => handleBookingAction(booking, 'confirmed')} className="bg-green-600 hover:bg-green-500 text-white p-2 rounded-lg"><Check size={20} /></button>
+                          <button onClick={() => handleBookingAction(booking, 'rejected')} className="bg-red-600 hover:bg-red-500 text-white p-2 rounded-lg"><XIcon size={20} /></button>
                         </div>
                      )}
                      {!profile?.is_tutor && (
-                        <button onClick={() => handleCancelBooking(booking)} className="bg-slate-700 hover:bg-red-600 text-slate-300 hover:text-white p-2 rounded-lg transition" title="Cancel & Refund">
+                        <button 
+                          onClick={() => handleCancelBooking(booking)} 
+                          className="bg-slate-700 hover:bg-red-600 text-slate-300 hover:text-white p-2 rounded-lg transition" 
+                          title={booking.status === 'rejected' ? "Remove Notice" : "Cancel & Refund"}
+                        >
                           <Trash2 size={20} />
                         </button>
                      )}
                    </div>
                 </div>
-              ))
-            )}
+            ))}
           </div>
         </div>
       </div>
-      
+
       {/* RATING MODAL */}
       {ratingModal && (
         <div className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4">
@@ -589,9 +550,7 @@ export default function Dashboard() {
             <h3 className="text-xl font-bold mb-4">Rate Tutor</h3>
             <div className="flex justify-center gap-2 mb-6">
                 {[1, 2, 3, 4, 5].map((s) => (
-                <button key={s} onClick={() => setStars(s)}>
-                    <Star size={32} fill={s <= stars ? "#facc15" : "none"} className={s <= stars ? "text-yellow-400" : "text-slate-600"} />
-                </button>
+                <button key={s} onClick={() => setStars(s)}><Star size={32} fill={s <= stars ? "#facc15" : "none"} className={s <= stars ? "text-yellow-400" : "text-slate-600"} /></button>
                 ))}
             </div>
             <textarea className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white mb-4" placeholder="How was the lesson?" onChange={(e) => setComment(e.target.value)} />
@@ -600,7 +559,6 @@ export default function Dashboard() {
             </div>
         </div>
       )}
-
     </div>
   );
 }

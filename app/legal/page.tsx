@@ -1,6 +1,6 @@
 import React from 'react';
 import Link from 'next/link';
-import { ArrowLeft, ShieldAlert, BookOpen, Clock, Users, PenTool } from 'lucide-react';
+import { ArrowLeft, ShieldAlert, BookOpen, Clock, Users, PenTool, CheckCircle } from 'lucide-react';
 
 export default function LegalPage() {
   return (
@@ -14,7 +14,7 @@ export default function LegalPage() {
         <p className="text-slate-400 mb-10">Last updated: February 2026</p>
         
         <div className="space-y-12">
-           
+            
            {/* --- SECTION A: FOR STUDENTS --- */}
            <section className="bg-slate-800/50 p-8 rounded-2xl border border-slate-700">
               <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-2">
@@ -33,6 +33,10 @@ export default function LegalPage() {
                       <li><strong>Student Cancellation:</strong> You can cancel your booking up to 1 hour before the start time for a full refund. Please note that bank processing times usually take 3-7 business days.</li>
                       <li><strong>Tutor No-Show:</strong> If your tutor fails to attend, you are entitled to an immediate full refund.</li>
                       <li><strong>Late Arrival:</strong> Tutors are only required to wait for 15 minutes. If you do not join within this window, the session will be marked as a "Student No-Show," and no refund will be issued.</li>
+                      {/* --- ADDED POLICY BELOW --- */}
+                      <li>
+                        <strong>Student No-Show:</strong> Tutors are required to wait for 15 minutes. If you do not join within this window, the tutor may mark the session as a "No-Show." In this case, <strong>you will only be refunded 50% of the session fee</strong> as a penalty for the tutor's time.
+                      </li>
                   </ul>
                 </div>
               </div>
@@ -54,6 +58,15 @@ export default function LegalPage() {
                   <p className="mt-2 text-sm italic">Violation of this rule results in a permanent account ban and the immediate forfeiture of all unpaid earnings.</p>
                 </div>
 
+                {/* --- NEW INTEGRITY SECTION --- */}
+                <div className="border-l-4 border-yellow-500 bg-slate-900/60 p-5 rounded-r-xl">
+                  <h3 className="text-lg font-bold text-white mb-2 flex items-center gap-2">
+                    <CheckCircle size={18} className="text-yellow-500" /> Session Completion & Honesty
+                  </h3>
+                  <p className="mb-2">Tutors are required to mark a lesson as <strong>"Complete"</strong> on their dashboard only after a lesson has successfully taken place.</p>
+                  <p className="text-red-400 font-bold italic text-sm">Attempting to falsify session completion or lying about conducting a lesson that did not occur will lead to an immediate and permanent ban from the platform.</p>
+                </div>
+
                 <div className="bg-slate-900/40 p-5 rounded-xl border border-slate-700">
                   <h3 className="text-lg font-bold text-white mb-2 flex items-center gap-2">
                     <PenTool size={18} className="text-blue-400" /> Recommended Equipment
@@ -65,6 +78,7 @@ export default function LegalPage() {
                   <h3 className="text-lg font-bold text-white mb-1">2. Payout Structure</h3>
                   <ul className="list-disc pl-5 space-y-2">
                     <li><strong>Service Fee:</strong> TutBuddy retains a 15% commission on every booking to maintain the platform and process secure payments.</li>
+                    <li><strong>Confirmation Requirement:</strong> Tutors must manually mark a lesson as complete to trigger the payout process.</li>
                     <li><strong>Payment Timing:</strong> To ensure session satisfaction and handle potential disputes, <strong>payouts are processed 3 days after the successful completion</strong> of a booking.</li>
                     <li><strong>Reliability:</strong> Frequent cancellations or missed sessions will result in the loss of your "Verified Tutor" badge.</li>
                   </ul>
@@ -83,7 +97,6 @@ export default function LegalPage() {
               <p className="text-sm">TutBuddy connects students with independent tutors. We verify academic transcripts to ensure quality, but we do not employ tutors directly. We are not responsible for the content of lessons or technical issues outside our control (e.g., Load Shedding)</p>
            </section>
         </div>
-        
         
       </div>
     </div>

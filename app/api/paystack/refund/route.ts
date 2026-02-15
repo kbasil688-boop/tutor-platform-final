@@ -4,28 +4,29 @@ export async function POST(request: Request) {
   try {
     const { reference } = await request.json();
 
-    // 1. Talk to Paystack to process refund
+    if (!process.env.PAYSTACK_SECRET_KEY) {
+      throw new Error("Missing Paystack Secret Key in Server");
+    }
+
     const response = await fetch('https://api.paystack.co/refund', {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`, // Ensure this is in your .env.local
+        Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        transaction: reference, // The Paystack Reference we saved
-      }),
+      body: JSON.stringify({ transaction: reference }),
     });
 
     const data = await response.json();
 
     if (!data.status) {
-      throw new Error(data.message || "Refund failed");
+      throw new Error(data.message || "Refund failed from Paystack");
     }
 
     return NextResponse.json({ success: true, message: "Refund processed" });
 
   } catch (error: any) {
-    console.error("Refund Error:", error);
+    console.error("Refund Logic Error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

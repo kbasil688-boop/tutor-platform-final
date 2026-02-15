@@ -3,7 +3,10 @@
 import React, { useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useRouter } from 'next/navigation';
-import { Mail, Lock, Loader2, ArrowRight, User, GraduationCap, School, Languages, Eye, EyeOff, BookOpen, Linkedin } from 'lucide-react';
+import Link from 'next/link';
+import { Mail, Lock, Loader2, ArrowRight, User, GraduationCap, School, CheckSquare, BookOpen, Trophy, Sparkles, Languages, Eye, EyeOff, Linkedin } from 'lucide-react';
+
+
 
 export default function AuthPage() {
   const router = useRouter();
@@ -12,12 +15,16 @@ export default function AuthPage() {
   const [role, setRole] = useState<'student' | 'tutor'>('student');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ text: string, type: 'error' | 'success' } | null>(null);
+  
+  // State
   const [showPassword, setShowPassword] = useState(false);
   const [confirmationSent, setConfirmationSent] = useState(false);
+  const [agreedToTerms, setAgreedToTerms] = useState(false); 
 
   // Form Fields
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState(''); // NEW STATE
   const [fullName, setFullName] = useState('');
   
   // Tutor Fields
@@ -25,11 +32,15 @@ export default function AuthPage() {
   const [price, setPrice] = useState('');
   const [languageStr, setLanguageStr] = useState('');
   const [linkedin, setLinkedin] = useState('');
-  const [aboutMe, setAboutMe] = useState(''); // NEW: Replaces the 3 questions
+  const [aboutMe, setAboutMe] = useState('');
+  
+  // Q&A
+  const [selectedIndices, setSelectedIndices] = useState<number[]>([]);
+  const [answers, setAnswers] = useState<{[key: number]: string}>({});
 
   const handleResetPassword = async () => {
     if (!email) {
-      setMessage({ text: "Please enter your email first.", type: 'error' });
+      setMessage({ text: "Please enter your email address first.", type: 'error' });
       return;
     }
     setLoading(true);
@@ -48,8 +59,17 @@ export default function AuthPage() {
 
     try {
       if (isSignUp) {
-        
-        // 1. Prepare Metadata
+        // --- 1. ENFORCE TERMS ---
+        if (!agreedToTerms) {
+            throw new Error("You must read and agree to the Terms & Refund Policy to continue.");
+        }
+
+        // --- NEW: PASSWORD MATCH VALIDATION ---
+        if (password !== confirmPassword) {
+            throw new Error("Passwords do not match. Please check and try again.");
+        }
+
+        // --- 2. PACK DATA ---
         const metaData = {
           full_name: fullName,
           is_tutor: role === 'tutor',
@@ -57,10 +77,11 @@ export default function AuthPage() {
           price: price,
           languages: languageStr,
           linkedin_link: linkedin,
-          bio: aboutMe // Save "About Me" directly to bio
+          bio: aboutMe,
+          custom_questions: [] 
         };
 
-        // 2. Send Signup
+        // --- 3. SEND SIGNUP ---
         const { error: authError } = await supabase.auth.signUp({ 
           email, 
           password,
@@ -85,12 +106,12 @@ export default function AuthPage() {
         }
 
         if (data.user) {
-           await supabase.from('tutors').update({ is_online: true }).eq('user_id', data.user.id);
+            await supabase.from('tutors').update({ is_online: true }).eq('user_id', data.user.id);
         }
         router.push('/dashboard');
       }
     } catch (error: any) {
-      if (error.message === "Failed to fetch") setMessage({ text: "Network error. Check internet.", type: 'error' });
+      if (error.message === "Failed to fetch") setMessage({ text: "Network error. Please check your internet connection.", type: 'error' });
       else setMessage({ text: error.message, type: 'error' });
     } finally {
       setLoading(false);
@@ -178,14 +199,33 @@ export default function AuthPage() {
                 {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
               </button>
             </div>
-            {!isSignUp && (
-              <div className="text-right mt-2">
-                <button type="button" onClick={handleResetPassword} className="text-slate-400 text-xs hover:text-white underline">Forgot Password?</button>
-              </div>
-            )}
           </div>
 
-          {/* --- NEW TUTOR FORM (Simplified) --- */}
+          {/* --- NEW: CONFIRM PASSWORD FIELD --- */}
+          {isSignUp && (
+            <div>
+              <label className="block text-slate-400 text-xs uppercase font-bold mb-2">Confirm Password</label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-3 text-slate-500" size={20} />
+                <input 
+                  type={showPassword ? "text" : "password"} 
+                  required 
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl py-3 pl-10 pr-10 text-white focus:border-blue-500 outline-none [&::-ms-reveal]:hidden" 
+                  placeholder="••••••••" 
+                  value={confirmPassword} 
+                  onChange={(e) => setConfirmPassword(e.target.value)} 
+                />
+              </div>
+            </div>
+          )}
+
+          {!isSignUp && (
+            <div className="text-right mt-2">
+              <button type="button" onClick={handleResetPassword} className="text-slate-400 text-xs hover:text-white underline">Forgot Password?</button>
+            </div>
+          )}
+
+          {/* --- TUTOR FORM --- */}
           {isSignUp && role === 'tutor' && (
             <div className="space-y-4 pt-4 border-t border-slate-700">
               <p className="text-yellow-400 text-sm font-bold text-center">Build Profile</p>
@@ -205,13 +245,12 @@ export default function AuthPage() {
                 <label className="block text-slate-400 text-xs uppercase font-bold mb-2 flex items-center gap-1"><Languages size={14}/> Languages (Comma separated)</label>
                 <input type="text" required className="w-full bg-slate-900 border border-slate-700 rounded-xl py-3 px-4 text-white focus:border-yellow-400 outline-none" placeholder="e.g. English, Zulu, Xhosa" value={languageStr} onChange={(e) => setLanguageStr(e.target.value)} />
               </div>
-              
+
               <div>
                 <label className="block text-slate-400 text-xs uppercase font-bold mb-2 flex items-center gap-1"><Linkedin size={14}/> LinkedIn (Optional)</label>
                 <input type="text" className="w-full bg-slate-900 border border-slate-700 rounded-xl py-3 px-4 text-white focus:border-yellow-400 outline-none" placeholder="https://linkedin.com/in/..." value={linkedin} onChange={(e) => setLinkedin(e.target.value)} />
               </div>
 
-              {/* NEW: ABOUT ME (Replaces the 3 Questions) */}
               <div>
                 <label className="block text-slate-400 text-xs uppercase font-bold mb-2 flex items-center gap-1"><BookOpen size={14}/> About Me / Teaching Style</label>
                 <textarea 
@@ -225,7 +264,22 @@ export default function AuthPage() {
             </div>
           )}
 
-          <button disabled={loading} className={`w-full font-bold py-4 rounded-xl transition flex items-center justify-center gap-2 mt-6 ${isSignUp && role === 'tutor' ? 'bg-yellow-400 hover:bg-yellow-300 text-black' : 'bg-blue-600 hover:bg-blue-500 text-white'}`}>
+          {/* --- TERMS CHECKBOX (REQUIRED) --- */}
+          {isSignUp && (
+            <div className="flex items-start gap-2 pt-2">
+               <div 
+                 onClick={() => setAgreedToTerms(!agreedToTerms)}
+                 className={`mt-1 w-5 h-5 rounded border flex items-center justify-center cursor-pointer transition ${agreedToTerms ? 'bg-blue-600 border-blue-600' : 'border-slate-500 hover:border-slate-300'}`}
+               >
+                  {agreedToTerms && <CheckSquare size={14} className="text-white"/>}
+               </div>
+               <p className="text-xs text-slate-400 leading-snug select-none">
+                 I agree to the <Link href="/legal" target="_blank" className="text-blue-400 underline hover:text-blue-300">Terms of Service</Link> and <Link href="/legal" target="_blank" className="text-blue-400 underline hover:text-blue-300">Refund Policy</Link>.
+               </p>
+            </div>
+          )}
+
+          <button disabled={loading} className={`w-full font-bold py-4 rounded-xl transition flex items-center justify-center gap-2 mt-4 ${isSignUp && role === 'tutor' ? 'bg-yellow-400 hover:bg-yellow-300 text-black' : 'bg-blue-600 hover:bg-blue-500 text-white'}`}>
             {loading ? <Loader2 className="animate-spin" /> : (isSignUp ? (role === 'tutor' ? 'Register' : 'Register') : 'Login')}
             {!loading && <ArrowRight size={20} />}
           </button>

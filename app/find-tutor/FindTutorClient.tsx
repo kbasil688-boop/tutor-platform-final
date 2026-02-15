@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Search, Star, Clock, Zap, Calendar, ArrowLeft, X, Video, User, RotateCcw, ExternalLink, MessageSquare, Languages, ShieldCheck, GraduationCap } from 'lucide-react';
-import Link from 'next/link';
+import { Search, Clock, Zap, Calendar, ArrowLeft, X, Video, User, RotateCcw, ExternalLink, MessageSquare, Languages, ShieldCheck, GraduationCap, Linkedin, Star } from 'lucide-react';
+import Link from 'next/link'; 
 import { supabase } from '../lib/supabaseClient';
 import { useRouter } from 'next/navigation';
 import Script from 'next/script'; 
@@ -14,6 +14,7 @@ export default function FindTutorClient() {
   const [tutors, setTutors] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   
+  // Modals
   const [bookingTutor, setBookingTutor] = useState<any>(null);
   const [profileTutor, setProfileTutor] = useState<any>(null);
   const [tutorLessons, setTutorLessons] = useState<any[]>([]);
@@ -21,6 +22,12 @@ export default function FindTutorClient() {
   const [userEmail, setUserEmail] = useState("student@tutorhub.co.za");
 
   const router = useRouter();
+
+  // Fixes the LinkedIn 404 error by ensuring it's an absolute URL
+  const formatExternalLink = (url: string) => {
+    if (!url) return '#';
+    return url.startsWith('http') ? url : `https://${url.trim()}`;
+  };
 
   const fetchTutors = async () => {
     setLoading(true);
@@ -47,22 +54,11 @@ export default function FindTutorClient() {
   const payWithPaystack = async (type: 'live' | 'scheduled') => {
     const { data: { user } } = await supabase.auth.getUser();
 
-    // --- DEBUGGING: CHECK THE KEY ---
-    const publicKey = "pk_test_d251e61122e310fc51e2015dff9813f6d09217f3";
-    console.log("PAYSTACK KEY:", publicKey); // Look for this in console
-    console.log("USER EMAIL:", user?.email);
-
-    if (!publicKey) {
-      alert("ERROR: Paystack Public Key is missing! Check Vercel Environment Variables.");
-      return;
-    }
-
-    if (!user || !user.email) {
+    if (!user) {
       alert("Please login to book a tutor!");
       router.push('/auth');
       return;
     }
-
     if (type === 'scheduled' && !scheduleDate) {
       alert("Please select a date and time!");
       return;
@@ -73,14 +69,14 @@ export default function FindTutorClient() {
     }
 
     if (typeof window === 'undefined' || !(window as any).PaystackPop) {
-      alert("Payment system loading... please wait 2 seconds.");
+      alert("Payment system loading... please wait 2 seconds and try again.");
       return;
     }
 
     const amountInCents = (bookingTutor.price_per_hour || 150) * 100;
 
     const handler = (window as any).PaystackPop.setup({
-      key: publicKey, // Using the variable we checked above
+      key: process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY, 
       email: user.email,
       amount: amountInCents, 
       currency: 'ZAR',
@@ -133,7 +129,6 @@ export default function FindTutorClient() {
   return (
     <div className="min-h-screen bg-slate-900 text-white font-sans relative">
       
-      {/* LOAD PAYSTACK SCRIPT */}
       <Script src="https://js.paystack.co/v1/inline.js" strategy="lazyOnload" />
 
       <header className="sticky top-0 z-10 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 p-4">
@@ -174,23 +169,26 @@ export default function FindTutorClient() {
                   <div className="w-16 h-16 rounded-full bg-slate-700 flex items-center justify-center text-2xl font-bold border-2 border-slate-600">
                     {tutor.profiles?.full_name?.[0] || "T"}
                   </div>
-                  <div>
+                  <div className="flex-1">
                     <h3 className="text-xl font-bold flex items-center gap-2">
                        {tutor.profiles?.full_name || "Tutor"}
                        {tutor.verification_status === 'verified' && (
                           <ShieldCheck size={18} className="text-blue-400" fill="currentColor" stroke="black" />
                        )}
                     </h3>
-                    <p className="text-slate-400 text-sm">{tutor.subject}</p>
-                    <div className="flex items-center gap-1 text-yellow-400 text-sm font-bold mt-1">
-                      <Star size={14} fill="currentColor" /> {tutor.rating}
-                    </div>
+                    {/* Subject below name */}
+                    <p className="text-blue-400 font-bold text-sm">{tutor.subject}</p>
+                    
+                    {/* Conditional Rating Display */}
+                    {tutor.rating > 0 && (
+                      <div className="flex items-center gap-1 text-yellow-400 text-sm font-bold mt-1">
+                        <Star size={14} fill="currentColor" /> {tutor.rating}
+                      </div>
+                    )}
                   </div>
                 </div>
 
-               
-                 
-                
+                {/* Card Bio hidden - moved to Profile Modal */}
 
                 <div className="flex flex-col gap-2 border-t border-slate-700 pt-4">
                    <div className="flex justify-between items-center mb-2">
@@ -227,14 +225,19 @@ export default function FindTutorClient() {
                         {profileTutor.profiles?.full_name}
                         {profileTutor.verification_status === 'verified' && <ShieldCheck size={24} className="text-blue-400" fill="currentColor" stroke="black" />}
                     </h2>
+                    
                     <p className="text-blue-400 font-bold text-lg">{profileTutor.subject}</p>
+                    
                     {profileTutor.linkedin_link && (
-                        <a href={profileTutor.linkedin_link} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 mt-1 text-xs text-blue-300 hover:text-white transition bg-blue-900/30 px-2 py-1 rounded">
-                            <ExternalLink size={12} /> LinkedIn Profile
+                        <a href={formatExternalLink(profileTutor.linkedin_link)} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex items-center gap-2 bg-[#0077b5] hover:bg-[#005582] text-white text-xs font-bold px-3 py-1.5 rounded-lg transition shadow-lg shadow-blue-500/20">
+                            <Linkedin size={14} fill="currentColor" /> LinkedIn Profile
                         </a>
                     )}
-                    <div className="flex items-center gap-2 mt-2">
-                       <span className="bg-yellow-400/20 text-yellow-400 px-2 py-1 rounded text-xs font-bold flex items-center gap-1"><Star size={12}/> {profileTutor.rating} Rating</span>
+                    
+                    <div className="flex items-center gap-2 mt-3">
+                       {profileTutor.rating > 0 && (
+                          <span className="bg-yellow-400/20 text-yellow-400 px-2 py-1 rounded text-xs font-bold flex items-center gap-1"><Star size={12}/> {profileTutor.rating} Rating</span>
+                       )}
                        <span className="bg-slate-700 text-slate-300 px-2 py-1 rounded text-xs">R{profileTutor.price_per_hour}/hr</span>
                     </div>
                  </div>
@@ -257,19 +260,17 @@ export default function FindTutorClient() {
                  <h3 className="text-slate-400 text-xs font-bold uppercase mb-2 flex items-center gap-2">
                     <MessageSquare size={14}/> About {profileTutor.profiles?.full_name?.split(' ')[0]}
                  </h3>
-                 {Array.isArray(profileTutor.custom_questions) && profileTutor.custom_questions.length > 0 ? (
-                    profileTutor.custom_questions.map((item: any, idx: number) => (
-                      <div key={idx} className="bg-slate-900 p-4 rounded-xl border border-slate-700">
+                 <div className="bg-slate-900 p-4 rounded-xl border border-slate-700">
+                    <p className="text-slate-200 text-sm leading-relaxed whitespace-pre-line">{profileTutor.bio || "No detailed profile yet."}</p>
+                    {Array.isArray(profileTutor.custom_questions) && profileTutor.custom_questions.map((item: any, idx: number) => (
+                      <div key={idx} className="mt-4 pt-4 border-t border-slate-800">
                          <p className="text-yellow-400 font-bold text-sm mb-1">{item.question}</p>
                          <p className="text-slate-200 text-sm italic">"{item.answer}"</p>
                       </div>
-                    ))
-                 ) : (
-                    <div className="bg-slate-900 p-4 rounded-xl border border-slate-700">
-                       <p className="text-slate-400 text-sm">{profileTutor.bio || "No detailed profile yet."}</p>
-                    </div>
-                 )}
+                    ))}
+                 </div>
               </div>
+
               <h3 className="text-xl font-bold mb-4 flex items-center gap-2 border-t border-slate-700 pt-6">
                 <Video className="text-yellow-400" /> Recorded Lessons
               </h3>
@@ -297,13 +298,14 @@ export default function FindTutorClient() {
         </div>
       )}
 
+      {/* --- BOOKING MODAL --- */}
       {bookingTutor && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-slate-800 w-[95%] md:w-full max-w-md rounded-3xl p-6 border border-slate-700 relative shadow-2xl">
             <button onClick={() => setBookingTutor(null)} className="absolute top-4 right-4 text-slate-400 hover:text-white"><X size={24} /></button>
 
             <h2 className="text-2xl font-bold mb-1">Book {bookingTutor.profiles.full_name}</h2>
-            <p className="text-slate-400 text-sm mb-6">Subject: {bookingTutor.subject}</p>
+            <p className="text-blue-400 font-bold text-sm mb-6">{bookingTutor.subject}</p>
             <p className="text-yellow-400 font-bold mb-4">Price: R{bookingTutor.price_per_hour}.00 / session</p>
 
             <div className="space-y-4">
@@ -317,7 +319,6 @@ export default function FindTutorClient() {
                  <input type="text" className="w-full bg-slate-800 border border-slate-600 rounded-lg p-2 text-white text-sm focus:border-blue-500 outline-none" placeholder="Enter friends' emails..." value={guestEmails} onChange={(e) => setGuestEmails(e.target.value)} />
               </div>
 
-              {/* PAYMENT BUTTONS */}
               <button 
                 onClick={() => payWithPaystack('live')}
                 disabled={!bookingTutor.is_online}
